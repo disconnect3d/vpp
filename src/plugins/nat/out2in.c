@@ -787,8 +787,7 @@ snat_out2in_node_fn (vlib_main_t * vm,
 		      && (udp0->dst_port ==
 			  clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
 		    {
-		      vnet_feature_next
-			(vnet_buffer (b0)->sw_if_index[VLIB_RX], &next0, b0);
+		      vnet_feature_next (&next0, b0);
 		      goto trace0;
 		    }
 
@@ -939,8 +938,7 @@ snat_out2in_node_fn (vlib_main_t * vm,
 		      && (udp1->dst_port ==
 			  clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
 		    {
-		      vnet_feature_next
-			(vnet_buffer (b1)->sw_if_index[VLIB_RX], &next1, b1);
+		      vnet_feature_next (&next1, b1);
 		      goto trace1;
 		    }
 
@@ -1127,8 +1125,7 @@ snat_out2in_node_fn (vlib_main_t * vm,
 		      && (udp0->dst_port ==
 			  clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
 		    {
-		      vnet_feature_next
-			(vnet_buffer (b0)->sw_if_index[VLIB_RX], &next0, b0);
+		      vnet_feature_next (&next0, b0);
 		      goto trace00;
 		    }
 
@@ -1353,9 +1350,7 @@ nat44_out2in_reass_node_fn (vlib_main_t * vm,
                           && (udp0->dst_port
                               == clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
 			{
-                          vnet_feature_next
-                            (vnet_buffer (b0)->sw_if_index[VLIB_RX],
-                             &next0, b0);
+                          vnet_feature_next (&next0, b0);
                           goto trace0;
                         }
 
@@ -2187,8 +2182,7 @@ nat44_ed_out2in_node_fn_inline (vlib_main_t * vm,
                           && (udp0->dst_port ==
                           clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
                         {
-                          vnet_feature_next
-                            (vnet_buffer (b0)->sw_if_index[VLIB_RX], &next0, b0);
+                          vnet_feature_next (&next0, b0);
                           goto trace00;
                         }
 
@@ -2391,8 +2385,7 @@ nat44_ed_out2in_node_fn_inline (vlib_main_t * vm,
                           && (udp1->dst_port ==
                           clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
                         {
-                          vnet_feature_next
-                            (vnet_buffer (b1)->sw_if_index[VLIB_RX], &next1, b1);
+                          vnet_feature_next (&next1, b1);
                           goto trace01;
                         }
 
@@ -2627,8 +2620,7 @@ nat44_ed_out2in_node_fn_inline (vlib_main_t * vm,
                           && (udp0->dst_port ==
                           clib_host_to_net_u16(UDP_DST_PORT_dhcp_to_client))))
                         {
-                          vnet_feature_next
-                            (vnet_buffer (b0)->sw_if_index[VLIB_RX], &next0, b0);
+                          vnet_feature_next (&next0, b0);
                           goto trace0;
                         }
 
@@ -3705,7 +3697,7 @@ snat_out2in_fast_node_fn (vlib_main_t * vm,
           sw_if_index0 = vnet_buffer(b0)->sw_if_index[VLIB_RX];
 	  rx_fib_index0 = ip4_fib_table_get_index_for_sw_if_index(sw_if_index0);
 
-	  vnet_feature_next (sw_if_index0, &next0, b0);
+	  vnet_feature_next (&next0, b0);
 
           if (PREDICT_FALSE(ip0->ttl == 1))
             {
