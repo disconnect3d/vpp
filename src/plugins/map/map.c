@@ -179,6 +179,9 @@ map_delete_domain (u32 map_domain_index)
   map_main_t *mm = &map_main;
   map_domain_t *d;
 
+  if (map_domain_index == 0)
+    return -1;
+
   if (pool_is_free_index (mm->domains, map_domain_index))
     {
       clib_warning ("MAP domain delete: domain does not exist: %d",
@@ -583,7 +586,6 @@ map_del_domain_command_fn (vlib_main_t * vm,
       error = clib_error_return (0, "mandatory argument(s) missing");
       goto done;
     }
-
   map_delete_domain (map_domain_index);
 
 done:
@@ -1062,7 +1064,7 @@ show_map_stats_command_fn (vlib_main_t * vm, unformat_input_t * input,
   map_main_t *mm = &map_main;
   map_domain_t *d;
   int domains = 0, rules = 0, domaincount = 0, rulecount = 0;
-  if (pool_elts (mm->domains) == 0)
+  if (pool_elts (mm->domains) <= 1)
     {
       vlib_cli_output (vm, "No MAP domains are configured...");
       return 0;
