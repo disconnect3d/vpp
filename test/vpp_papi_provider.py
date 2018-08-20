@@ -720,6 +720,18 @@ class VppPapiProvider(object):
                         {'sw_if_index': sw_if_index,
                          'enable': enable})
 
+    def sw_interface_set_ip_directed_broadcast(
+            self,
+            sw_if_index,
+            enable=1):
+        """IP Directed broadcast
+        :param sw_if_index - interface the operation is applied to
+
+        """
+        return self.api(self.papi.sw_interface_set_ip_directed_broadcast,
+                        {'sw_if_index': sw_if_index,
+                         'enable': enable})
+
     def sw_interface_set_flags(self, sw_if_index, admin_up_down):
         """
 
@@ -1573,7 +1585,6 @@ class VppPapiProvider(object):
             external_addr,
             external_port,
             protocol,
-            vrf_id=0,
             twice_nat=0,
             self_twice_nat=0,
             out2in_only=0,
@@ -1593,7 +1604,6 @@ class VppPapiProvider(object):
              'external_addr': external_addr,
              'external_port': external_port,
              'protocol': protocol,
-             'vrf_id': vrf_id,
              'twice_nat': twice_nat,
              'self_twice_nat': self_twice_nat,
              'out2in_only': out2in_only,
@@ -2602,6 +2612,15 @@ class VppPapiProvider(object):
                 'mtu': mtu
             })
 
+    def map_if_enable_disable(self, is_enable, sw_if_index, is_translation):
+        return self.api(
+            self.papi.map_if_enable_disable,
+            {
+                'is_enable': is_enable,
+                'sw_if_index': sw_if_index,
+                'is_translation': is_translation,
+            })
+
     def gtpu_add_del_tunnel(
             self,
             src_addr,
@@ -3474,7 +3493,14 @@ class VppPapiProvider(object):
                          'input_source': input_source,
                          'enable': enable})
 
-    def igmp_listen(self, enable, sw_if_index, saddr, gaddr):
+    def igmp_enable_disable(self, sw_if_index, enable, host):
+        """ Enable/disable IGMP on a given interface """
+        return self.api(self.papi.igmp_enable_disable,
+                        {'enable': enable,
+                         'mode': host,
+                         'sw_if_index': sw_if_index})
+
+    def igmp_listen(self, filter, sw_if_index, saddrs, gaddr):
         """ Listen for new (S,G) on specified interface
 
         :param enable: add/del
@@ -3483,20 +3509,26 @@ class VppPapiProvider(object):
         :param gaddr: group ip4 addr
         """
         return self.api(self.papi.igmp_listen,
-                        {'enable': enable,
-                         'sw_if_index': sw_if_index,
-                         'saddr': saddr,
-                         'gaddr': gaddr})
+                        {
+                            'group':
+                            {
+                                'filter': filter,
+                                'sw_if_index': sw_if_index,
+                                'n_srcs': len(saddrs),
+                                'saddrs': saddrs,
+                                'gaddr':
+                                {
+                                    'address': gaddr
+                                }
+                            }
+                        })
 
     def igmp_dump(self, sw_if_index=None):
         """ Dump all (S,G) interface configurations """
         if sw_if_index is None:
-            dump_all = 1
-            sw_if_index = 0
-        else:
-            dump_all = 0
-        return self.api(self.papi.igmp_dump, {'sw_if_index': sw_if_index,
-                                              'dump_all': dump_all})
+            sw_if_index = 0xffffffff
+        return self.api(self.papi.igmp_dump,
+                        {'sw_if_index': sw_if_index})
 
     def igmp_clear_interface(self, sw_if_index):
         """ Remove all (S,G)s from specified interface
@@ -3650,3 +3682,15 @@ class VppPapiProvider(object):
     def abf_itf_attach_dump(self):
         return self.api(
             self.papi.abf_itf_attach_dump, {})
+
+    def pipe_create(self, is_specified, user_instance):
+        return self.api(self.papi.pipe_create,
+                        {'is_specified': is_specified,
+                         'user_instance': user_instance})
+
+    def pipe_delete(self, parent_sw_if_index):
+        return self.api(self.papi.pipe_delete,
+                        {'parent_sw_if_index': parent_sw_if_index})
+
+    def pipe_dump(self):
+        return self.api(self.papi.pipe_dump, {})
