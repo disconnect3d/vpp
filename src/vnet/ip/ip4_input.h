@@ -325,6 +325,9 @@ ip4_input_check_x1 (vlib_main_t * vm,
     error0 = (ip0->ip_version_and_header_length & 0xf) != 5 ?
       IP4_ERROR_OPTIONS : IP4_ERROR_VERSION;
 
+  if (PREDICT_FALSE (ip0->ttl < 1))
+    error0 = IP4_ERROR_TIME_EXPIRED;
+
   /* Verify header checksum. */
   if (verify_checksum)
     {
