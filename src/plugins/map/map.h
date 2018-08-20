@@ -75,8 +75,6 @@ typedef enum
 #define MAP_IP6_REASS_COUNT_BYTES
 #define MAP_IP4_REASS_COUNT_BYTES
 
-#define MAP_DOMAIN_NO_DOMAIN 0
-
 //#define IP6_MAP_T_OVERRIDE_TOS 0
 
 /*
@@ -416,11 +414,9 @@ map_get_sfx_net (map_domain_t *d, u32 addr, u16 port)
                                           clib_net_to_host_u16(port)));
 }
 
-/* TODO: Verify correct mapping */
 static_always_inline u32
 map_get_ip4 (ip6_address_t *addr, map_domain_flags_e flags)
 {
-  clib_warning("Not implemented yet!!!");
   if (flags & MAP_DOMAIN_RFC6052)
     return clib_host_to_net_u32(clib_net_to_host_u64(addr->as_u64[1]));
   else
@@ -434,7 +430,7 @@ ip4_map_get_domain (ip4_address_t *addr, u32 *map_domain_index, u8 *error)
   u32 mdi = mm->ip4_prefix_tbl->lookup(mm->ip4_prefix_tbl, addr, 32);
   if (mdi == ~0) {
     *error = MAP_ERROR_NO_DOMAIN;
-    mdi = MAP_DOMAIN_NO_DOMAIN;
+    return 0;
   }
   *map_domain_index = mdi;
   return pool_elt_at_index(mm->domains, mdi);
@@ -454,7 +450,7 @@ ip6_map_get_domain (ip6_address_t *addr,
   u32 mdi = mm->ip6_src_prefix_tbl->lookup(mm->ip6_src_prefix_tbl, addr, 128);
   if (mdi == ~0) {
     *error = MAP_ERROR_NO_DOMAIN;
-    mdi = MAP_DOMAIN_NO_DOMAIN;
+    return 0;
   }
   *map_domain_index = mdi;
   return pool_elt_at_index(mm->domains, mdi);

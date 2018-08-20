@@ -510,7 +510,7 @@ ip4_map_t (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame)
     {
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
-#ifdef IP4_MAP_T_DUAL_LOOP
+#if 0
       while (n_left_from >= 4 && n_left_to_next >= 2)
 	{
 	  u32 pi0, pi1;
@@ -671,6 +671,10 @@ ip4_map_t (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame)
 	  d0 = ip4_map_get_domain (&ip40->dst_address,
 				   &vnet_buffer (p0)->map_t.map_domain_index,
 				   &error0);
+	  if (!d0) { /* Guess it wasn't for us */
+	    vnet_feature_next (vnet_buffer (p0)->sw_if_index[VLIB_RX], &next0, p0);
+	    goto exit;
+	  }
 
 	  vnet_buffer (p0)->map_t.mtu = d0->mtu ? d0->mtu : ~0;
 
@@ -714,6 +718,8 @@ ip4_map_t (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame)
 
 	  next0 = (error0 != MAP_ERROR_NONE) ? IP4_MAPT_NEXT_DROP : next0;
 	  p0->error = error_node->errors[error0];
+
+	exit:
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next, pi0,
 					   next0);

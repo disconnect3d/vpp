@@ -179,9 +179,6 @@ map_delete_domain (u32 map_domain_index)
   map_main_t *mm = &map_main;
   map_domain_t *d;
 
-  if (map_domain_index == 0)
-    return -1;
-
   if (pool_is_free_index (mm->domains, map_domain_index))
     {
       clib_warning ("MAP domain delete: domain does not exist: %d",
@@ -1064,7 +1061,7 @@ show_map_stats_command_fn (vlib_main_t * vm, unformat_input_t * input,
   map_main_t *mm = &map_main;
   map_domain_t *d;
   int domains = 0, rules = 0, domaincount = 0, rulecount = 0;
-  if (pool_elts (mm->domains) <= 1)
+  if (pool_elts (mm->domains) == 0)
     {
       vlib_cli_output (vm, "No MAP domains are configured...");
       return 0;
@@ -2318,12 +2315,6 @@ map_init (vlib_main_t * vm)
 #ifdef MAP_SKIP_IP6_LOOKUP
   fib_node_register_type (FIB_NODE_TYPE_MAP_E, &map_vft);
 #endif
-
-  /* Create empty domain that's used in case of error */
-  map_domain_t *d;
-  pool_get_aligned (mm->domains, d, CLIB_CACHE_LINE_BYTES);
-  memset (d, 0, sizeof (*d));
-  d->ip6_src_len = 64;
 
   /* LPM lookup tables */
   mm->ip4_prefix_tbl = lpm_table_init (LPM_TYPE_KEY32);
