@@ -8,12 +8,11 @@ from vpp_ip_route import VppIpRoute, VppRoutePath, DpoProto
 
 from scapy.layers.l2 import Ether, Raw
 from scapy.layers.inet import IP, UDP, ICMP, TCP
-from scapy.layers.inet6 import IPv6
+from scapy.layers.inet6 import IPv6, ICMPv6TimeExceeded
 
 
 class TestMAP(VppTestCase):
     """ MAP Test Case """
-
     def setUp(self):
         super(TestMAP, self).setUp()
 
@@ -37,6 +36,9 @@ class TestMAP(VppTestCase):
             i.unconfig_ip4()
             i.unconfig_ip6()
             i.admin_down()
+
+        if not self.vpp_dead:
+            self.logger.info(self.vapi.cli("show map domain"))
 
     def send_and_assert_encapped(self, tx, ip6_src, ip6_dst, dmac=None):
         if not dmac:
@@ -87,9 +89,6 @@ class TestMAP(VppTestCase):
                                  client_pfx,
                                  16)
 
-        # Enable MAP on interface.
-        self.vapi.map_if_enable_disable(1, self.pg0.sw_if_index, 0)
-
         #
         # Fire in a v4 packet that will be encapped to the BR
         #
@@ -104,8 +103,6 @@ class TestMAP(VppTestCase):
         # Fire in a V6 encapped packet.
         #  expect a decapped packet on the inside ip4 link
         #
-        # Enable MAP on interface.
-        self.vapi.map_if_enable_disable(1, self.pg1.sw_if_index, 0)
 
         p = (Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac) /
              IPv6(dst=map_src, src="2001::1") /
@@ -182,11 +179,7 @@ class TestMAP(VppTestCase):
         ip4_pfx = socket.inet_pton(socket.AF_INET, "192.168.0.0")
 
         self.vapi.map_add_domain(map_dst, 32, map_src, 64, ip4_pfx,
-                                 24, 16, 0, 8, 1)
-
-        # Enable MAP-T on interfaces.
-        self.vapi.map_if_enable_disable(1, self.pg0.sw_if_index, 1)
-        self.vapi.map_if_enable_disable(1, self.pg1.sw_if_index, 1)
+                                 24, 16, 6, 4, 1)
 
         map_route = VppIpRoute(self,
                                "2001:db8::",
@@ -206,7 +199,7 @@ class TestMAP(VppTestCase):
 
         p4 = (p_ether / p_ip4 / payload)
         p6_translated = (IPv6(src="1234:5678:90ab:cdef:ac:1001:200:0",
-                              dst="2001:db8:1ab::c0a8:1:ab") / payload)
+                              dst="2001:db8:1f0::c0a8:1:f") / payload)
         p6_translated.hlim -= 1
         rx = self.send_and_expect(self.pg0, p4*1, self.pg1)
         for p in rx:
@@ -214,7 +207,7 @@ class TestMAP(VppTestCase):
 
         # Send back an IPv6 packet that will be "untranslated"
         p_ether6 = Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac)
-        p_ip6 = IPv6(src='2001:db8:1ab::c0a8:1:ab',
+        p_ip6 = IPv6(src='2001:db8:1f0::c0a8:1:f',
                      dst='1234:5678:90ab:cdef:ac:1001:200:0')
         p6 = (p_ether6 / p_ip6 / payload)
         p4_translated = (IP(src='192.168.0.1',
@@ -226,7 +219,7 @@ class TestMAP(VppTestCase):
             self.validate(p[1], p4_translated)
 
 
-        # TTL
+        # IPv4 TTL
         ip4_ttl_expired = IP(src=self.pg0.remote_ip4, dst='192.168.0.1', ttl=0)
         p4 = (p_ether / ip4_ttl_expired / payload)
 
@@ -237,6 +230,43 @@ class TestMAP(VppTestCase):
         for p in rx:
             self.validate(p[1], icmp4_reply)
 
+        '''
+        This one is broken, cause it would require hairpinning...
+        # IPv4 TTL TTL1
+        ip4_ttl_expired = IP(src=self.pg0.remote_ip4, dst='192.168.0.1', ttl=1)
+        p4 = (p_ether / ip4_ttl_expired / payload)
+
+        icmp4_reply = IP(id=0, ttl=254, src=self.pg0.local_ip4, dst=self.pg0.remote_ip4) / \
+                      ICMP(type='time-exceeded', code='ttl-zero-during-transit' ) / \
+                      IP(src=self.pg0.remote_ip4, dst='192.168.0.1', ttl=0) / payload
+        rx = self.send_and_expect(self.pg0, p4*1, self.pg0)
+        for p in rx:
+            self.validate(p[1], icmp4_reply)
+        '''
+
+
+        # IPv6 Hop limit
+        ip6_hlim_expired = IPv6(hlim=0, src='2001:db8:1ab::c0a8:1:ab', dst='1234:5678:90ab:cdef:ac:1001:200:0')
+        p6 = (p_ether6 / ip6_hlim_expired / payload)
+
+        icmp6_reply = IPv6(hlim=254, src=self.pg1.local_ip6, dst="2001:db8:1ab::c0a8:1:ab") / \
+                      ICMPv6TimeExceeded(code=0) / \
+                      IPv6(src="2001:db8:1ab::c0a8:1:ab", dst='1234:5678:90ab:cdef:ac:1001:200:0', hlim=0) / payload
+        rx = self.send_and_expect(self.pg1, p6*1, self.pg1)
+        for p in rx:
+            self.validate(p[1], icmp6_reply)
+
+
+        # IPv4 Well-known port
+        p_ip4 = IP(src=self.pg0.remote_ip4, dst='192.168.0.1')
+        payload = UDP(sport=200, dport=200)
+        p4 = (p_ether / p_ip4 / payload)
+        self.send_and_assert_no_replies(self.pg0, p4*1)
+
+        # IPv6 Well-known port
+        payload = UDP(sport=200, dport=200)
+        p6 = (p_ether6 / p_ip6 / payload)
+        self.send_and_assert_no_replies(self.pg1, p6*1)
 
 
 if __name__ == '__main__':

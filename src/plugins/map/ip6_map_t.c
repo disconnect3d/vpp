@@ -1023,11 +1023,7 @@ ip6_map_t (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame)
 		      u8_ptr_add (ip60,
 				  vnet_buffer (p0)->map_t.v6.
 				  l4_offset))->code == ICMP6_echo_request)
-		map_port0 =
-		  (i32) *
-		  ((u16 *)
-		   u8_ptr_add (ip60,
-			       vnet_buffer (p0)->map_t.v6.l4_offset + 6));
+		map_port0 = (i32) * ((u16 *) u8_ptr_add (ip60, vnet_buffer (p0)->map_t.v6.l4_offset + 6));
 	    }
 	  else
 	    {
