@@ -537,7 +537,7 @@ ip4_map_reass (vlib_main_t * vm,
 	  i32 port0 = 0;
 	  ip6_header_t *ip60;
 	  u32 next0 = IP4_MAP_REASS_NEXT_IP6_LOOKUP;
-	  u32 map_domain_index0;
+	  u32 map_domain_index0 = ~0;
 	  u8 cached = 0;
 
 	  pi0 = to_next[0] = from[0];
