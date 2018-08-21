@@ -900,18 +900,13 @@ ip6_map_t (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame)
 		      u8_ptr_add (ip60,
 				  vnet_buffer (p0)->map_t.v6.
 				  l4_offset))->code == ICMP6_echo_request)
-		map_port0 =
-		  (i32) *
-		  ((u16 *)
-		   u8_ptr_add (ip60,
-			       vnet_buffer (p0)->map_t.v6.l4_offset + 6));
+		map_port0 = (i32) * ((u16 *) u8_ptr_add (ip60, vnet_buffer (p0)->map_t.v6.l4_offset + 6));
 	    }
 	  else
 	    {
 	      //TODO: In case of 1:1 mapping, it might be possible to do something with those packets.
 	      error0 = MAP_ERROR_BAD_PROTOCOL;
 	    }
-
 	  if (PREDICT_FALSE (map_port0 != -1)
 	      && (ip60->src_address.as_u64[0] !=
 		  map_get_pfx_net (d0, vnet_buffer (p0)->map_t.v6.saddr,
