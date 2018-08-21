@@ -7,7 +7,7 @@ from framework import VppTestCase, VppTestRunner
 from vpp_ip_route import VppIpRoute, VppRoutePath, DpoProto
 
 from scapy.layers.l2 import Ether, Raw
-from scapy.layers.inet import IP, UDP, ICMP, TCP
+from scapy.layers.inet import IP, UDP, ICMP, TCP, fragment
 from scapy.layers.inet6 import IPv6, ICMPv6TimeExceeded
 
 
@@ -173,6 +173,9 @@ class TestMAP(VppTestCase):
     def validate(self, rx, expected):
         self.assertEqual(rx, expected.__class__(str(expected)))
 
+    def payload(self, len):
+        return 'x' * len
+
     def test_map_t(self):
         """ MAP-T """
 
@@ -276,6 +279,33 @@ class TestMAP(VppTestCase):
         payload = UDP(sport=200, dport=200)
         p6 = (p_ether6 / p_ip6 / payload)
         self.send_and_assert_no_replies(self.pg1, p6*1)
+
+        # Packet fragmentation
+        payload = UDP(sport=40000, dport=4000) / self.payload(1453)
+        p4 = (p_ether / p_ip4 / payload)
+        self.pg_enable_capture()
+        self.pg0.add_stream(p4)
+        self.pg_start()
+        rx = self.pg1.get_capture(2)
+        for p in rx:
+            p.show2()
+            # Manual validation
+            #self.validate(p[1], icmp4_reply)
+
+        # Packet fragmentation send fragments
+        payload = UDP(sport=40000, dport=4000) / self.payload(1453)
+        p4 = (p_ether / p_ip4 / payload)
+        frags = fragment(p4, fragsize=1000)
+        self.pg_enable_capture()
+        self.pg0.add_stream(frags)
+        self.pg_start()
+        rx = self.pg1.get_capture(2)
+        for p in rx:
+            p.show2()
+        #reass_pkt = reassemble(rx)
+        #p4_reply.ttl -= 1
+        #p4_reply.id = 256
+        #self.validate(reass_pkt, p4_reply)
 
 
 if __name__ == '__main__':
