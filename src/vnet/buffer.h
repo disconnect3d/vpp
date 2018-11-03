@@ -134,6 +134,12 @@ typedef struct
 	     protocol and ports. */
 	  u32 flow_hash;
 
+	  /* Rewrite length */
+	  u32 save_rewrite_length;
+
+	  /* MFIB RPF ID */
+	  u32 rpf_id;
+
 	  union
 	  {
 	    /* next protocol */
@@ -142,12 +148,6 @@ typedef struct
 	    /* Hint for transport protocols */
 	    u32 fib_index;
 	  };
-
-	  /* Rewrite length */
-	  u32 save_rewrite_length;
-
-	  /* MFIB RPF ID */
-	  u32 rpf_id;
 	};
 
 	/* ICMP */
