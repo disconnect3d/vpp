@@ -70,6 +70,10 @@ extern int ip6_neighbor_ra_prefix (vlib_main_t * vm, u32 sw_if_index,
 				   u8 off_link, u8 no_autoconfig,
 				   u8 no_onlink, u8 is_no);
 
+extern int ip6_neighbor_ra_universal_option (vlib_main_t * vm,
+					     u32 sw_if_index, u32 len,
+					     u8 * cbor_data);
+
 extern clib_error_t *ip6_set_neighbor_limit (u32 neighbor_limit);
 
 extern void vnet_register_ip6_neighbor_resolution_event (vnet_main_t * vnm,

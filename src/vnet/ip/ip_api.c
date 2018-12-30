@@ -97,6 +97,7 @@ _(IP_PUNT_REDIRECT, ip_punt_redirect)                                   \
 _(SET_IP_FLOW_HASH,set_ip_flow_hash)                                    \
 _(SW_INTERFACE_IP6ND_RA_CONFIG, sw_interface_ip6nd_ra_config)           \
 _(SW_INTERFACE_IP6ND_RA_PREFIX, sw_interface_ip6nd_ra_prefix)           \
+_(SW_INTERFACE_IP6ND_RA_UNIVERSAL_OPTION, sw_interface_ip6nd_ra_universal_option) \
 _(IP6ND_PROXY_ADD_DEL, ip6nd_proxy_add_del)                             \
 _(IP6ND_PROXY_DUMP, ip6nd_proxy_dump)                                   \
 _(IP6ND_SEND_ROUTER_SOLICITATION, ip6nd_send_router_solicitation)       \
@@ -1674,6 +1675,23 @@ static void
 			       ntohl (mp->val_lifetime),
 			       ntohl (mp->pref_lifetime), no_advertise,
 			       off_link, no_autoconfig, no_onlink, is_no);
+
+  BAD_SW_IF_INDEX_LABEL;
+  REPLY_MACRO (VL_API_SW_INTERFACE_IP6ND_RA_PREFIX_REPLY);
+}
+
+static void
+  vl_api_sw_interface_ip6nd_ra_universal_option_t_handler
+  (vl_api_sw_interface_ip6nd_ra_universal_option_t * mp)
+{
+  vlib_main_t *vm = vlib_get_main ();
+  vl_api_sw_interface_ip6nd_ra_universal_option_reply_t *rmp;
+  int rv = 0;
+
+  VALIDATE_SW_IF_INDEX (mp);
+
+  rv = ip6_neighbor_ra_universal_option (vm, ntohl (mp->sw_if_index),
+					 ntohl (mp->len), mp->cbor_data);
 
   BAD_SW_IF_INDEX_LABEL;
   REPLY_MACRO (VL_API_SW_INTERFACE_IP6ND_RA_PREFIX_REPLY);

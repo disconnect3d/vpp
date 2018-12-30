@@ -281,6 +281,18 @@ autoreply define sw_interface_ip6nd_ra_prefix
   u32 pref_lifetime;
 };
 
+/*
+ * Add universal RA option to per-interface RA
+ */
+autoreply define sw_interface_ip6nd_ra_universal_option
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 len;
+  u8 cbor_data[len];
+};
+
 /** \brief IPv6 ND proxy config
     @param client_index - opaque cookie to identify the sender
     @param context - sender context, to match reply w/ request

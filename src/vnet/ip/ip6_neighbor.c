@@ -75,6 +75,12 @@ typedef struct
   ip6_address_t *mcast_source_address_pool;
 } ip6_mldp_group_t;
 
+typedef struct
+{
+  u32 len;
+  u8 *cbor_data;
+} ip6_ra_universal_option_t;
+
 /* configured router advertisement information per ipv6 interface */
 typedef struct
 {
@@ -164,6 +170,8 @@ typedef struct
   u32 n_left;
   f64 start_time;
   vlib_buffer_t *buffer;
+
+  ip6_ra_universal_option_t universal;
 } ip6_radv_t;
 
 typedef struct
@@ -1795,6 +1803,34 @@ icmp6_router_solicitation (vlib_main_t * vm,
                           }
                       }));
 		      /* *INDENT-ON* */
+
+		      /* add universal RA option */
+		      clib_warning ("Sending RA %d",
+				    radv_info->universal.len);
+		      if (radv_info->universal.len)
+			{
+			  icmp6_neighbor_discovery_option_header_t h;
+
+			  h.type =
+			    ICMP6_NEIGHBOR_DISCOVERY_OPTION_universal_ra_option;
+			  h.n_data_u64s = (radv_info->universal.len + 2) >> 3;
+
+			  payload_length +=
+			    sizeof (icmp6_neighbor_discovery_option_header_t)
+			    + radv_info->universal.len;
+
+			  vlib_buffer_add_data (vm,
+						vlib_buffer_get_free_list_index
+						(p0), bi0, (void *) &h,
+						sizeof
+						(icmp6_neighbor_discovery_option_header_t));
+			  vlib_buffer_add_data (vm,
+						vlib_buffer_get_free_list_index
+						(p0), bi0,
+						(void *) radv_info->
+						universal.cbor_data,
+						radv_info->universal.len);
+			}
 
 		      /* add additional options before here */
 
@@ -3613,6 +3649,45 @@ ip6_neighbor_ra_prefix (vlib_main_t * vm, u32 sw_if_index,
       radv_info->last_radv_time = 0;
     }
   return (error);
+}
+
+int
+ip6_neighbor_ra_universal_option (vlib_main_t * vm, u32 sw_if_index,
+				  u32 len, u8 * cbor_data)
+{
+  ip6_neighbor_main_t *nm = &ip6_neighbor_main;
+  u32 padded_len = len;
+
+  /* look up the radv_t  information for this interface */
+  vec_validate_init_empty (nm->if_radv_pool_index_by_sw_if_index, sw_if_index,
+			   ~0);
+
+  u32 ri = nm->if_radv_pool_index_by_sw_if_index[sw_if_index];
+  if (ri == ~0)
+    return VNET_API_ERROR_INVALID_SW_IF_INDEX;
+
+  /* Limit size to make sure it fits into a single packet for now */
+  if (len > 1024)
+    {
+      clib_warning ("Length limited to 1024 (for now), got %d", len + 2);
+      return -1;
+    }
+
+  /* Option has to be padded out to 8 octets */
+  int pad = (len + 2) % 8;
+  if (pad > 0)
+    padded_len += 8 - pad;
+
+  ip6_radv_t *radv_info = pool_elt_at_index (nm->if_radv_pool, ri);
+  ip6_ra_universal_option_t *universal = &radv_info->universal;
+  if (universal->len)
+    clib_mem_free (universal->cbor_data);
+  universal->cbor_data = clib_mem_alloc (padded_len);
+  clib_memset (universal->cbor_data, 0, padded_len);	/* Sufficient to zero out padding */
+  clib_memcpy (universal->cbor_data, cbor_data, len);
+  universal->len = padded_len;
+
+  return 0;
 }
 
 clib_error_t *

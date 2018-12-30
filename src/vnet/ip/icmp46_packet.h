@@ -226,6 +226,7 @@ typedef CLIB_PACKED (struct
   _ (29, handover_assist_information)		\
   _ (30, mobile_node_identifier)		\
   _ (31, dns_search_list)			\
+  _ (42, universal_ra_option)	        	\
   _ (138, card_request)				\
   _ (139, card_reply)
 
