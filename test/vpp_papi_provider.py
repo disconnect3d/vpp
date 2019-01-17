@@ -4147,3 +4147,24 @@ class VppPapiProvider(object):
     def syslog_get_filter(self):
         """Return syslog filter parameters"""
         return self.api(self.papi.syslog_get_filter, {})
+
+    def hanat_mapper_set_state_sync(self, src_ip_address, src_port,
+                                    failover_ip_address, failover_port,
+                                    path_mtu=512):
+        return self.api(self.papi.hanat_mapper_set_state_sync,
+                        {'src_ip_address': src_ip_address,
+                         'failover_ip_address': failover_ip_address,
+                         'src_port': src_port,
+                         'failover_port': failover_port,
+                         'path_mtu': path_mtu})
+
+    def hanat_mapper_user_dump(self):
+        return self.api(self.papi.hanat_mapper_user_dump, {})
+
+    def hanat_mapper_user_session_dump(self, address, tenant_id):
+        return self.api(self.papi.hanat_mapper_user_session_dump,
+                        {'address': address,
+                         'tenant_id': tenant_id})
+
+    def hanat_mapper_enable(self, port):
+        return self.api(self.papi.hanat_mapper_enable, {'port': port})
