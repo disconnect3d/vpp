@@ -40,8 +40,8 @@ typedef enum
   HANAT_MAPPER_N_NEXT,
 } hanat_mapper_next_t;
 
-#define foreach_hanat_mapper_error              \
-_(PROCESSED, "HA NAT mapper packets processed")
+#define foreach_hanat_mapper_error \
+_(PROCESSED, "pkts-processed")
 
 typedef enum
 {
@@ -57,13 +57,22 @@ static char *hanat_mapper_error_strings[] = {
 #undef _
 };
 
+typedef struct
+{
+  ip4_address_t addr;
+  u32 event_count;
+} hanat_state_sync_trace_t;
+
 static u8 *
 format_hanat_state_sync_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+  hanat_state_sync_trace_t *t = va_arg (*args, hanat_state_sync_trace_t *);
 
-  s = format (s, "hanat-state-sync: TODO");
+  s =
+    format (s, "hanat-state-sync: %u events from %U", t->event_count,
+	    format_ip4_address, &t->addr);
 
   return s;
 }
@@ -74,9 +83,9 @@ typedef enum
   HANAT_STATE_SYNC_N_NEXT,
 } hanat_state_sync_next_t;
 
-#define foreach_hanat_state_sync_error              \
-_(PROCESSED, "HA NAT state sync packets processed") \
-_(BAD_VERSION, "HA NAT state sync bad version")
+#define foreach_hanat_state_sync_error \
+_(PROCESSED, "pkts-processed") \
+_(BAD_VERSION, "bad-version")
 
 typedef enum
 {
@@ -200,6 +209,7 @@ hanat_state_sync_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 {
   u32 n_left_from, *from, *to_next_drop;
   f64 now = vlib_time_now (vm);
+  u32 thread_index = vm->thread_index;
 
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
@@ -242,7 +252,7 @@ hanat_state_sync_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  while (event_count0)
 	    {
-	      hanat_state_sync_event_process (e0, now);
+	      hanat_state_sync_event_process (e0, now, thread_index);
 	      event_count0--;
 	      e0++;
 	    }
@@ -252,7 +262,12 @@ hanat_state_sync_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			     && (b0->flags & VLIB_BUFFER_IS_TRACED)))
 	    {
-	      //TODO
+	      hanat_state_sync_trace_t *t =
+		vlib_add_trace (vm, node, b0, sizeof (*t));
+	      ip4_header_t *ip =
+		(void *) (b0->data + vnet_buffer (b0)->l3_hdr_offset);
+	      t->event_count = clib_net_to_host_u16 (h0->count);
+	      t->addr.as_u32 = ip->src_address.data_u32;
 	    }
 
 	}

@@ -283,8 +283,8 @@ hanat_mapper_set_state_sync_command_fn (vlib_main_t * vm,
     }
 
   rv =
-    hanat_mapper_set_state_sync (&src_addr, &failover_addr, (u16) src_port,
-				 (u16) failover_port, path_mtu);
+    hanat_state_sync_set (&src_addr, &failover_addr, (u16) src_port,
+			  (u16) failover_port, path_mtu);
 
   if (rv)
     {
@@ -384,7 +384,7 @@ hanat_mapper_state_sync_flush_command_fn (vlib_main_t * vm,
 					  unformat_input_t * input,
 					  vlib_cli_command_t * cmd)
 {
-  hanat_state_sync_event_add (0, 1);
+  hanat_state_sync_event_add (0, 1, vm->thread_index);
 
   return 0;
 }
@@ -455,7 +455,7 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   event.protocol = proto;
   event.flags = 0;
   event.event_type = is_add ? HANAT_STATE_SYNC_ADD : HANAT_STATE_SYNC_DEL;
-  hanat_state_sync_event_add (&event, 0);
+  hanat_state_sync_event_add (&event, 0, vm->thread_index);
 
 done:
   unformat_free (line_input);

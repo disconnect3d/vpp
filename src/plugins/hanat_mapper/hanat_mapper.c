@@ -14,6 +14,7 @@
  */
 
 #include <hanat_mapper/hanat_mapper.h>
+#include <hanat_mapper/hanat_state_sync.h>
 #include <vnet/udp/udp.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
@@ -38,15 +39,13 @@ hanat_mapper_init (vlib_main_t * vm)
   nm->tcp_established_timeout = HANAT_MAPPER_TCP_ESTABLISHED_TIMEOUT;
   nm->tcp_transitory_timeout = HANAT_MAPPER_TCP_TRANSITORY_TIMEOUT;
   nm->icmp_timeout = HANAT_MAPPER_ICMP_TIMEOUT;
-  nm->state_sync_buffer = 0;
-  nm->state_sync_frame = 0;
-  nm->state_sync_count = 0;
 
   nm->vlib_main = vm;
   nm->vnet_main = vnet_get_main ();
   nm->api_main = &api_main;
 
   hanat_mapper_db_init (&nm->db, 100);
+  hanat_state_sync_init (vm);
 
   error = hanat_mapper_api_init (vm, nm);
 
@@ -155,28 +154,6 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 
       hanat_mapper_mapping_free (&nm->db, mapping, 1);
     }
-
-  return 0;
-}
-
-int
-hanat_mapper_set_state_sync (ip4_address_t * src_addr,
-			     ip4_address_t * failover_addr, u16 src_port,
-			     u16 failover_port, u32 path_mtu)
-{
-  hanat_mapper_main_t *nm = &hanat_mapper_main;
-
-  nm->src_ip_address.as_u32 = src_addr->as_u32;
-  nm->failover_ip_address.as_u32 = failover_addr->as_u32;
-  nm->src_port = src_port;
-  nm->failover_port = failover_port;
-  nm->state_sync_path_mtu = path_mtu;
-
-  udp_register_dst_port (nm->vlib_main, src_port, hanat_state_sync_node.index,
-			 1);
-
-  vlib_process_signal_event (nm->vlib_main,
-			     hanat_state_sync_process_node.index, 1, 0);
 
   return 0;
 }

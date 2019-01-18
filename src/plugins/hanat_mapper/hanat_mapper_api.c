@@ -14,6 +14,7 @@
  */
 
 #include <hanat_mapper/hanat_mapper.h>
+#include <hanat_mapper/hanat_state_sync.h>
 #include <vlibapi/api.h>
 #include <vlibmemory/api.h>
 #include <hanat_mapper/hanat_mapper_msg_enum.h>
@@ -236,10 +237,10 @@ static void
   memcpy (&failover_addr, &mp->failover_ip_address, sizeof (failover_addr));
 
   rv =
-    hanat_mapper_set_state_sync (&src_addr, &failover_addr,
-				 clib_net_to_host_u16 (mp->src_port),
-				 clib_net_to_host_u16 (mp->failover_port),
-				 clib_net_to_host_u32 (mp->path_mtu));
+    hanat_state_sync_set (&src_addr, &failover_addr,
+			  clib_net_to_host_u16 (mp->src_port),
+			  clib_net_to_host_u16 (mp->failover_port),
+			  clib_net_to_host_u32 (mp->path_mtu));
 
   REPLY_MACRO (VL_API_HANAT_MAPPER_SET_STATE_SYNC_REPLY);
 }

@@ -71,17 +71,6 @@ typedef struct hanat_mapper_main_s
 
   hanat_mapper_db_t db;
 
-  /* state synchronization settings */
-  ip4_address_t src_ip_address;
-  ip4_address_t failover_ip_address;
-  u16 src_port;
-  u16 failover_port;
-  u32 state_sync_path_mtu;
-  vlib_buffer_t *state_sync_buffer;
-  vlib_frame_t *state_sync_frame;
-  u16 state_sync_count;
-  u32 state_sync_next_event_offset;
-
   /* convenience */
   vlib_main_t *vlib_main;
   vnet_main_t *vnet_main;
@@ -94,7 +83,6 @@ extern hanat_mapper_main_t hanat_mapper_main;
 
 extern vlib_node_registration_t hanat_mapper_node;
 extern vlib_node_registration_t hanat_state_sync_node;
-extern vlib_node_registration_t hanat_state_sync_process_node;
 
 clib_error_t *hanat_mapper_api_init (vlib_main_t * vm,
 				     hanat_mapper_main_t * nm);
@@ -111,10 +99,6 @@ int hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 					 u16 local_port, u16 external_port,
 					 u8 protocol, u32 tenant_id,
 					 u8 is_add);
-
-int hanat_mapper_set_state_sync (ip4_address_t * src_addr,
-				 ip4_address_t * failover_addr, u16 src_port,
-				 u16 failover_port, u32 path_mtu);
 
 format_function_t format_hanat_mapper_protocol;
 
