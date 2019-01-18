@@ -91,6 +91,9 @@ class TestHANATmapper(VppTestCase):
                                                                 user.tenant_id)
             self.assertEqual(len(sessions), 1)
 
+        stats = self.statistics.get_counter('/hanat-mapper/add-event-recv')
+        self.assertEqual(stats[0][0], 2)
+
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
              UDP(sport=self.remote_sync_port, dport=self.local_sync_port) /
@@ -108,6 +111,13 @@ class TestHANATmapper(VppTestCase):
         sessions = self.vapi.hanat_mapper_user_session_dump(users[0].address,
                                                             users[0].tenant_id)
         self.assertEqual(len(sessions), 1)
+
+        stats = self.statistics.get_counter('/hanat-mapper/del-event-recv')
+        self.assertEqual(stats[0][0], 1)
+
+        stats = self.statistics.get_counter(
+            '/err/hanat-state-sync/pkts-processed')
+        self.assertEqual(stats, 2)
 
     def test_hanat_state_sync_send(self):
         bind_layers(UDP, HANATStateSync, sport=self.local_sync_port)
@@ -151,6 +161,9 @@ class TestHANATmapper(VppTestCase):
             self.assertIn(event.out_l_port, [34567, 3467])
             self.assertEqual(event.tenant_id, 1)
 
+        stats = self.statistics.get_counter('/hanat-mapper/add-event-send')
+        self.assertEqual(stats[0][0], 2)
+
     def test_hanat_mapper(self):
         self.vapi.hanat_mapper_enable(self.mapper_port)
         p = (Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac) /
@@ -165,6 +178,9 @@ class TestHANATmapper(VppTestCase):
         self.assertEqual(p[IP].dst, self.pg1.remote_ip4)
         self.assertEqual(p[UDP].sport, self.mapper_port)
         self.assertEqual(p[UDP].dport, 11111)
+
+        stats = self.statistics.get_counter('/err/hanat-mapper/pkts-processed')
+        self.assertEqual(stats, 1)
 
     def tearDown(self):
         super(TestHANATmapper, self).tearDown()

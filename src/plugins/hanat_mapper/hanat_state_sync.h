@@ -16,6 +16,7 @@
 #define __included_hanat_state_sync_h__
 
 #include <vnet/vnet.h>
+#include <vnet/ip/ip.h>
 
 #define HANAT_STATE_SYNC_VERSION 0x01
 
@@ -49,10 +50,16 @@ typedef enum
   HANAT_STATE_SYNC_KEEPALIVE,
 } hanat_state_sync_event_type_t;
 
+void hanat_state_sync_init (vlib_main_t * vm);
+int hanat_state_sync_set (ip4_address_t * src_addr,
+			  ip4_address_t * failover_addr, u16 src_port,
+			  u16 failover_port, u32 path_mtu);
+
 void hanat_state_sync_event_process (hanat_state_sync_event_t * event,
-				     f64 now);
+				     f64 now, u32 thread_index);
+
 void hanat_state_sync_event_add (hanat_state_sync_event_t * event,
-				 u8 do_flush);
+				 u8 do_flush, u32 thread_index);
 
 #endif /* __included_hanat_state_sync_h__ */
 
