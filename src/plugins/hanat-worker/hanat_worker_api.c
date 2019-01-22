@@ -58,7 +58,7 @@ vl_api_hanat_worker_interface_add_del_t_handler(vl_api_hanat_worker_interface_ad
   vl_api_hanat_worker_interface_add_del_reply_t *rmp;
 
   VALIDATE_SW_IF_INDEX (mp);
-  rv = hanat_worker_interface_add_del (sw_if_index, ntohl(mp->mode), mp->is_add);
+  rv = hanat_worker_interface_add_del (sw_if_index, mp->is_add, ntohl(mp->mode));
   BAD_SW_IF_INDEX_LABEL;
   REPLY_MACRO (VL_API_HANAT_WORKER_INTERFACE_ADD_DEL_REPLY);
 }

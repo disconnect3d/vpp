@@ -82,6 +82,7 @@ typedef struct {
 typedef struct
 {
   u32 sw_if_index;
+  vl_api_hanat_worker_if_mode_t mode;
 } hanat_interface_t;
 
 typedef struct
@@ -122,6 +123,7 @@ typedef struct {
 
   /* Interface pool */
   hanat_interface_t *interfaces;
+  u32 *interface_by_sw_if_index;
 
   /* API message ID base */
   u16 msg_id_base;
@@ -135,7 +137,7 @@ hanat_session_t *hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, ha
 void hanat_session_delete (hanat_db_t *db, hanat_session_key_t *key);
 hanat_session_t *hanat_session_find (hanat_db_t *db, hanat_session_key_t *key);
 
-int hanat_worker_interface_add_del (u32 sw_if_index, bool is_inside, bool is_add);
+int hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode);
 clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
 int hanat_worker_mapper_add_del(bool is_add, u32 fib_index, ip4_address_t *prefix, u8 prefix_len,

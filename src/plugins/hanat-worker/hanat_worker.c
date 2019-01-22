@@ -39,7 +39,7 @@ hanat_worker_init (vlib_main_t * vm)
 }
 
 int
-hanat_worker_interface_add_del (u32 sw_if_index, bool is_inside, bool is_add)
+hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   hanat_interface_t *interface = 0, *i;
@@ -59,10 +59,15 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_inside, bool is_add)
 
     pool_get (hm->interfaces, interface);
     interface->sw_if_index = sw_if_index;
+    interface->mode = mode;
+    u32 index = interface - hm->interfaces;
+    vec_validate(hm->interface_by_sw_if_index, index);
+    hm->interface_by_sw_if_index[sw_if_index] = index;
   } else {
     if (!interface)
       return VNET_API_ERROR_NO_SUCH_ENTRY;
     pool_put (hm->interfaces, interface);
+    hm->interface_by_sw_if_index[sw_if_index] = ~0;
   }
 
   return vnet_feature_enable_disable ("ip4-unicast", "hanat-worker",

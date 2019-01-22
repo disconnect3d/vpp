@@ -89,38 +89,35 @@ format_hanat_worker_slow_trace (u8 * s, va_list * args)
   return s;
 }
 
+static vl_api_hanat_worker_if_mode_t
+get_interface_mode(u32 sw_if_index)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  u32 index = hm->interface_by_sw_if_index[sw_if_index];
+  hanat_interface_t *interface = pool_elt_at_index(hm->interfaces, index);
+  return interface->mode;
+}
 
-/*
- *    Send mapper request to given mapper
- *    Separate requeste to each mapper.
- *    Initial implementation one packet per request
- *
- * For each packet:
- *   - find mapper
- *   - Allocate buffer if mapper doesn't have buffer from template
- *   -Fill buffer with request
- * Sends packets
- * 
- */
 static u32
 find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  u32 mid;
+  u32 mid = ~0;
 
-  //mode = get_interface_mode(sw_if_index);
-  // If inside interface, lookup in buckets
-  // If outside interface, lookup in LPM
-  // If dual mode, first LPM then buckets
+  vl_api_hanat_worker_if_mode_t mode = get_interface_mode(sw_if_index);
 
-  /* Assume dual mode interface for now */
-  hanat_pool_key_t key = { .as_u32[0] = fib_index,
-			   .as_u32[1] = ip->dst_address.as_u32 };
-
-  mid = hanat_lpm_64_lookup (&hm->pool_db, &key, 32);
-  if (mid == ~0) {
-    u32 i = ip->src_address.as_u32 % hm->pool_db.n_buckets;
-    mid = hm->pool_db.lb_buckets[fib_index][i];
+  if (mode == HANAT_WORKER_IF_OUTSIDE ||
+      mode == HANAT_WORKER_IF_DUAL) {
+    hanat_pool_key_t key = { .as_u32[0] = fib_index,
+			     .as_u32[1] = ip->dst_address.as_u32 };
+    mid = hanat_lpm_64_lookup (&hm->pool_db, &key, 32);
+  }
+  if (mode == HANAT_WORKER_IF_INSIDE ||
+      mode == HANAT_WORKER_IF_DUAL) {
+    if (mid == ~0) {
+      u32 i = ip->src_address.as_u32 % hm->pool_db.n_buckets;
+      mid = hm->pool_db.lb_buckets[fib_index][i];
+    }
   }
   return mid;
 }
@@ -217,6 +214,11 @@ hanat_worker_slow_output (vlib_main_t * vm,
   return frame->n_vectors;
 }
 
+/*
+ * Receive instructions from mapper
+ * Do hand-off to owning worker?
+ * Single-thread at the moment?
+ */
 static uword
 hanat_worker_slow_input (vlib_main_t * vm,
 			 vlib_node_runtime_t * node,
