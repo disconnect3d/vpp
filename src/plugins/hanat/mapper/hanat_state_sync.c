@@ -294,7 +294,6 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
   vlib_buffer_t *b = 0;
   vlib_frame_t *f;
   u32 bi = ~0, offset;
-  vlib_buffer_free_list_t *fl;
 
   b = sm->state_sync_buffer;
 
@@ -311,9 +310,6 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
 
       b = sm->state_sync_buffer = vlib_get_buffer (vm, bi);
       clib_memset (vnet_buffer (b), 0, sizeof (*vnet_buffer (b)));
-      fl =
-	vlib_buffer_get_free_list (vm, VLIB_BUFFER_DEFAULT_FREE_LIST_INDEX);
-      vlib_buffer_init_for_free_list (b, fl);
       VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
       offset = 0;
     }
