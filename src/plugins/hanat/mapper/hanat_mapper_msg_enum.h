@@ -21,7 +21,7 @@
 #define vl_msg_id(n,h) n,
 typedef enum
 {
-#include <hanat_mapper/hanat_mapper_all_api_h.h>
+#include "hanat_mapper_all_api_h.h"
   /* We'll want to know how many messages IDs we need... */
   VL_MSG_FIRST_AVAILABLE,
 } vl_msg_id_t;

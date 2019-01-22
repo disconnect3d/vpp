@@ -23,7 +23,7 @@
 #include <vnet/ip/ip6_packet.h>
 
 #define vl_typedefs
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include <hanat/worker/hanat_worker_all_api_h.h>
 #undef vl_typedefs
 
 #define HANAT_WORKER_UDP_PORT		1234

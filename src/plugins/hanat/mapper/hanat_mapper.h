@@ -20,7 +20,7 @@
 #include <vnet/ip/ip.h>
 #include <vnet/api_errno.h>
 #include <vlibapi/api.h>
-#include <hanat_mapper/hanat_mapper_db.h>
+#include "hanat_mapper_db.h"
 
 /* default session timeouts */
 #define HANAT_MAPPER_UDP_TIMEOUT 300

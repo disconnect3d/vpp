@@ -13,20 +13,20 @@
  * limitations under the License.
  */
 
-#include <hanat_mapper/hanat_mapper.h>
-#include <hanat_mapper/hanat_state_sync.h>
+#include "hanat_mapper.h"
+#include "hanat_state_sync.h"
 #include <vlibapi/api.h>
 #include <vlibmemory/api.h>
-#include <hanat_mapper/hanat_mapper_msg_enum.h>
+#include "hanat_mapper_msg_enum.h"
 
 /* define message structures */
 #define vl_typedefs
-#include <hanat_mapper/hanat_mapper_all_api_h.h>
+#include "hanat_mapper_all_api_h.h"
 #undef vl_typedefs
 
 /* define generated endian-swappers */
 #define vl_endianfun
-#include <hanat_mapper/hanat_mapper_all_api_h.h>
+#include "hanat_mapper_all_api_h.h"
 #undef vl_endianfun
 
 #define vl_print(handle, ...) vlib_cli_output (handle, __VA_ARGS__)
@@ -36,7 +36,7 @@
 
 /* Get the API version number */
 #define vl_api_version(n,v) static u32 api_version=(v);
-#include <hanat_mapper/hanat_mapper_all_api_h.h>
+#include "hanat_mapper_all_api_h.h"
 #undef vl_api_version
 
 /* Macro to finish up custom dump fns */
@@ -433,7 +433,7 @@ hanat_mapper_plugin_api_hookup (vlib_main_t * vm)
 }
 
 #define vl_msg_name_crc_list
-#include <hanat_mapper/hanat_mapper_all_api_h.h>
+#include "hanat_mapper_all_api_h.h"
 #undef vl_msg_name_crc_list
 
 static void

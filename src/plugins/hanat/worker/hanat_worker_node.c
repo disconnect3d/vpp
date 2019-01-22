@@ -27,7 +27,7 @@
  */
 #define foreach_hanat_worker_next		\
   _(DROP, "error-drop")				\
-  _(SLOW_PATH, "hanat-worker-slow-path")
+  _(SLOW_PATH, "hanat-worker-slow-output")
 
 typedef enum {
 #define _(s, n) HANAT_WORKER_NEXT_##s,

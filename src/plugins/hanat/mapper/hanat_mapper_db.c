@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-#include <hanat_mapper/hanat_mapper_db.h>
-#include <hanat_mapper/hanat_mapper.h>
+#include "hanat_mapper_db.h"
+#include "hanat_mapper.h"
 
 typedef struct
 {

@@ -25,19 +25,19 @@
 
 /* define message structures */
 #define vl_typedefs
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include "hanat_worker_all_api_h.h"
 #undef vl_typedefs
 
 /* define generated endian-swappers */
 #define vl_endianfun
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include "hanat_worker_all_api_h.h"
 #undef vl_endianfun
 
 #define vl_print(handle, ...) vlib_cli_output (handle, __VA_ARGS__)
 /* instantiate all the print functions we know about */
 #define vl_print(handle, ...) vlib_cli_output (handle, __VA_ARGS__)
 #define vl_printfun
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include "hanat_worker_all_api_h.h"
 #undef vl_printfun
 
 #define REPLY_MSG_ID_BASE hm->msg_id_base
@@ -45,7 +45,7 @@
 
 /* Get the API version number */
 #define vl_api_version(n,v) static u32 api_version=(v);
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include "hanat_worker_all_api_h.h"
 #undef vl_api_version
 
 static void
@@ -174,7 +174,7 @@ hanat_worker_plugin_api_hookup (vlib_main_t * vm)
 }
 
 #define vl_msg_name_crc_list
-#include <hanat-worker/hanat_worker_all_api_h.h>
+#include "hanat_worker_all_api_h.h"
 #undef vl_msg_name_crc_list
 
 static void

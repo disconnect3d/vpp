@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#include <hanat_mapper/hanat_mapper.api.h>
+#include <hanat/mapper/hanat_mapper.api.h>
 
 /*
  * fd.io coding-style-patch-verification: ON

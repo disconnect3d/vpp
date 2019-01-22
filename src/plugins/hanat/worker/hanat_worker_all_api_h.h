@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 /* Include the generated file, see BUILT_SOURCES in Makefile.am */
-#include <hanat-worker/hanat_worker.api.h>
+#include <hanat/worker/hanat_worker.api.h>

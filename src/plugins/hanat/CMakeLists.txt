@@ -13,21 +13,38 @@
 
 add_vpp_plugin(hanat-worker
   SOURCES
-  hanat_worker_db.c
-  hanat_worker_node.c
-  hanat_worker_slow_node.c
-  hanat_worker.c
-  hanat_worker_api.c
+  worker/hanat_worker_db.c
+  worker/hanat_worker_node.c
+  worker/hanat_worker_slow_node.c
+  worker/hanat_worker.c
+  worker/hanat_worker_api.c
 
   API_FILES
-  hanat_worker.api
+  worker/hanat_worker.api
 
   INSTALL_HEADERS
-  hanat_worker_all_api_h.h
-  hanat_worker_msg_enum.h
+  worker/hanat_worker_all_api_h.h
+  worker/hanat_worker_msg_enum.h
 )
 
 add_vpp_executable(test_hanat_worker
-  SOURCES test_hanat_worker.c hanat_worker_db.c
+  SOURCES worker/test_hanat_worker.c worker/hanat_worker_db.c
   LINK_LIBRARIES vppinfra
+)
+
+add_vpp_plugin(hanat-mapper
+  SOURCES
+  mapper/cli.c
+  mapper/hanat_mapper.c
+  mapper/hanat_mapper_api.c
+  mapper/hanat_mapper_db.c
+  mapper/hanat_state_sync.c
+  mapper/node.c
+
+  API_FILES
+  mapper/hanat_mapper.api
+
+  INSTALL_HEADERS
+  mapper/hanat_mapper_all_api_h.h
+  mapper/hanat_mapper_msg_enum.h
 )

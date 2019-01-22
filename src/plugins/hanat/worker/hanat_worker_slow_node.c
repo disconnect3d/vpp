@@ -26,7 +26,7 @@
 #include "hanat_worker_db.h"
 
 /*
- * hanat-worker-slow-path NEXT nodes
+ * hanat-worker-slow NEXT nodes
  */
 #define foreach_hanat_worker_slow_output_next	\
   _(IP4_LOOKUP, "ip4-lookup")			\
