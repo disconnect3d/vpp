@@ -72,11 +72,10 @@ typedef u8 vlib_buffer_free_list_index_t;
  * Buffer Flags
  */
 #define foreach_vlib_buffer_flag \
-  _( 0, NON_DEFAULT_FREELIST, "non-default-fl")		\
-  _( 1, IS_TRACED, 0)					\
-  _( 2, NEXT_PRESENT, 0)				\
-  _( 3, TOTAL_LENGTH_VALID, 0)				\
-  _( 4, EXT_HDR_VALID, "ext-hdr-valid")
+  _( 0, IS_TRACED, 0)					\
+  _( 1, NEXT_PRESENT, 0)				\
+  _( 2, TOTAL_LENGTH_VALID, 0)				\
+  _( 3, EXT_HDR_VALID, "ext-hdr-valid")
 
 /* NOTE: only buffer generic flags should be defined here, please consider
    using user flags. i.e. src/vnet/buffer.h */
@@ -98,13 +97,12 @@ enum
   /* User defined buffer flags. */
 #define LOG2_VLIB_BUFFER_FLAG_USER(n) (32 - (n))
 #define VLIB_BUFFER_FLAG_USER(n) (1 << LOG2_VLIB_BUFFER_FLAG_USER(n))
-#define VLIB_BUFFER_FLAGS_ALL (0x1f)
+#define VLIB_BUFFER_FLAGS_ALL (0x0f)
 
 /* VLIB buffer representation. */
 typedef struct
 {
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
-  STRUCT_MARK (template_start);
   /* Offset within data[] that we are currently processing.
      If negative current header points into predata area. */
   i16 current_data;  /**< signed offset in data[], pre_data[]
@@ -131,8 +129,6 @@ typedef struct
                         Only valid if VLIB_BUFFER_NEXT_PRESENT flag is set.
                      */
 
-    STRUCT_MARK (template_end);
-
   u32 current_config_index; /**< Used by feature subgraph arcs to
                                visit enabled feature nodes
                             */
@@ -146,6 +142,13 @@ typedef struct
   u32 opaque[10]; /**< Opaque data used by sub-graphs for their own purposes.
                     See .../vnet/vnet/buffer.h
                  */
+
+    STRUCT_MARK (template_end);	/**< part of buffer metadata which is
+				   initialized on alloc ends here. It may be
+				   different than cacheline on systems with
+				   buffer cacheline size */
+
+  /***** end of first cache line */
     CLIB_CACHE_LINE_ALIGN_MARK (cacheline1);
 
   u32 trace_index; /**< Specifies index into trace buffer
@@ -157,10 +160,7 @@ typedef struct
   /**< Only valid for first buffer in chain. Current length plus
      total length given here give total number of bytes in buffer chain.
   */
-  vlib_buffer_free_list_index_t free_list_index; /** < only used if
-						   VLIB_BUFFER_NON_DEFAULT_FREELIST
-						   flag is set */
-  u8 align_pad[3]; /**< available */
+  u8 align_pad[4]; /**< available */
   u32 opaque2[12];  /**< More opaque data, see ../vnet/vnet/buffer.h */
 
   /***** end of second cache line */
@@ -367,9 +367,6 @@ typedef struct vlib_buffer_free_list_t
   /* Our index into vlib_main_t's buffer_free_list_pool. */
   vlib_buffer_free_list_index_t index;
 
-  /* Number of data bytes for buffers in this free list. */
-  u32 n_data_bytes;
-
   /* Number of buffers to allocate when we need to allocate new buffers */
   u32 min_n_buffers_each_alloc;
 
@@ -407,9 +404,6 @@ typedef struct
   vlib_buffer_fill_free_list_cb_t *vlib_buffer_fill_free_list_cb;
   vlib_buffer_free_cb_t *vlib_buffer_free_cb;
   vlib_buffer_free_no_next_cb_t *vlib_buffer_free_no_next_cb;
-  void (*vlib_buffer_delete_free_list_cb) (struct vlib_main_t * vm,
-					   vlib_buffer_free_list_index_t
-					   free_list_index);
 } vlib_buffer_callbacks_t;
 
 extern vlib_buffer_callbacks_t *vlib_buffer_callbacks;
@@ -440,7 +434,6 @@ typedef struct
 				 u32 * buffers,
 				 u32 n_buffers, u32 follow_buffer_next);
 #define VLIB_BUFFER_DEFAULT_FREE_LIST_INDEX (0)
-#define VLIB_BUFFER_DEFAULT_FREE_LIST_BYTES VLIB_BUFFER_DATA_SIZE
 
   /* Hash table mapping buffer size (rounded to next unit of
      sizeof (vlib_buffer_t)) to free list index. */
@@ -458,16 +451,7 @@ typedef struct
   int callbacks_registered;
 } vlib_buffer_main_t;
 
-extern vlib_buffer_main_t buffer_main;
-
-static_always_inline vlib_buffer_pool_t *
-vlib_buffer_pool_get (u8 buffer_pool_index)
-{
-  vlib_buffer_main_t *bm = &buffer_main;
-  return vec_elt_at_index (bm->buffer_pools, buffer_pool_index);
-}
-
-u8 vlib_buffer_register_physmem_map (struct vlib_main_t * vm,
+u8 vlib_buffer_register_physmem_map (struct vlib_main_t *vm,
 				     u32 physmem_map_index);
 
 clib_error_t *vlib_buffer_main_init (struct vlib_main_t *vm);

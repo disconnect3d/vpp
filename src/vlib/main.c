@@ -463,7 +463,7 @@ vlib_put_next_frame (vlib_main_t * vm,
   vlib_frame_t *f;
   u32 n_vectors_in_frame;
 
-  if (buffer_main.callbacks_registered == 0 && CLIB_DEBUG > 0)
+  if (vm->buffer_main->callbacks_registered == 0 && CLIB_DEBUG > 0)
     vlib_put_next_frame_validate (vm, r, next_index, n_vectors_left);
 
   nf = vlib_node_runtime_get_next_frame (vm, r, next_index);
@@ -987,7 +987,6 @@ format_buffer_metadata (u8 * s, va_list * args)
 	      "trace_index: %d, recycle_count: %d, len_not_first_buf: %d\n",
 	      b->trace_index, b->recycle_count,
 	      b->total_length_not_including_first_buffer);
-  s = format (s, "free_list_index: %d\n", (u32) (b->free_list_index));
   return s;
 }
 
@@ -1991,8 +1990,7 @@ vlib_main (vlib_main_t * volatile vm, unformat_input_t * input)
     goto done;
 
   /* Create default buffer free list. */
-  vlib_buffer_create_free_list (vm, VLIB_BUFFER_DEFAULT_FREE_LIST_BYTES,
-				"default");
+  vlib_buffer_create_free_list (vm, VLIB_BUFFER_DATA_SIZE, "default");
 
   nm->timing_wheel = clib_mem_alloc_aligned (sizeof (TWT (tw_timer_wheel)),
 					     CLIB_CACHE_LINE_BYTES);

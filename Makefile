@@ -296,7 +296,7 @@ else ifneq ("$(wildcard /etc/redhat-release)","")
 ifeq ($(OS_ID),rhel)
 	@sudo -E yum-config-manager --enable rhel-server-rhscl-7-rpms
 else ifeq ($(OS_ID),centos)
-	@sudo -E yum install $(CONFIRM) centos-release-scl-rh
+	@sudo -E yum install $(CONFIRM) centos-release-scl-rh epel-release
 	@sudo -E yum groupinstall $(CONFIRM) $(RPM_DEPENDS_GROUPS)
 	@sudo -E yum install $(CONFIRM) $(RPM_DEPENDS)
 	@sudo -E debuginfo-install $(CONFIRM) glibc openssl-libs mbedtls-devel zlib
@@ -489,7 +489,10 @@ run-vat:
 	@$(SUDO) $(BR)/install-$(PLATFORM)_debug-native/vpp/bin/vpp_api_test
 
 pkg-deb:
-	$(call make,$(PLATFORM),install-deb)
+	$(call make,$(PLATFORM),vpp-package-deb)
+
+pkg-deb-debug:
+	$(call make,$(PLATFORM)_debug,vpp-package-deb)
 
 pkg-rpm: dist
 	make -C extras/rpm
@@ -575,5 +578,3 @@ ifeq ($(OS_ID)-$(OS_VERSION_ID),ubuntu-18.04)
 	$(call banner,"Running tests")
 	@make COMPRESS_FAILED_TEST_LOGS=yes RETRIES=3 test
 endif
-
-

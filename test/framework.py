@@ -554,7 +554,7 @@ class VppTestCase(unittest.TestCase):
                           (self.__class__.__name__, self._testMethodName,
                            self._testMethodDoc))
         if not self.vpp_dead:
-            self.logger.debug(self.vapi.cli("show trace"))
+            self.logger.debug(self.vapi.cli("show trace max 1000"))
             self.logger.info(self.vapi.ppcli("show interface"))
             self.logger.info(self.vapi.ppcli("show hardware"))
             self.logger.info(self.statistics.set_errors_str())
@@ -635,7 +635,7 @@ class VppTestCase(unittest.TestCase):
             cls.logger.debug("Removing zombie capture %s" % cap_name)
             cls.vapi.cli('packet-generator delete %s' % cap_name)
 
-        cls.vapi.cli("trace add pg-input 50")  # 50 is maximum
+        cls.vapi.cli("trace add pg-input 1000")
         cls.vapi.cli('packet-generator enable')
         cls._zombie_captures = cls._captures
         cls._captures = []
@@ -1034,7 +1034,8 @@ class VppTestResult(unittest.TestResult):
     core_crash_test_cases_info = set()
     current_test_case_info = None
 
-    def __init__(self, stream, descriptions, verbosity, runner):
+    def __init__(self, stream=None, descriptions=None, verbosity=None,
+                 runner=None):
         """
         :param stream File descriptor to store where to report test results.
             Set to the standard error stream by default.
@@ -1279,12 +1280,12 @@ class VppTestRunner(unittest.TextTestRunner):
 
     def __init__(self, keep_alive_pipe=None, descriptions=True, verbosity=1,
                  result_pipe=None, failfast=False, buffer=False,
-                 resultclass=None, print_summary=True):
+                 resultclass=None, print_summary=True, **kwargs):
         # ignore stream setting here, use hard-coded stdout to be in sync
         # with prints from VppTestCase methods ...
         super(VppTestRunner, self).__init__(sys.stdout, descriptions,
                                             verbosity, failfast, buffer,
-                                            resultclass)
+                                            resultclass, **kwargs)
         KeepAliveReporter.pipe = keep_alive_pipe
 
         self.orig_stream = self.stream

@@ -264,7 +264,8 @@ nat_free_session_data (snat_main_t * sm, snat_session_t * s, u32 thread_index)
     return;
 
   /* log NAT event */
-  snat_ipfix_logging_nat44_ses_delete (s->in2out.addr.as_u32,
+  snat_ipfix_logging_nat44_ses_delete (thread_index,
+				       s->in2out.addr.as_u32,
 				       s->out2in.addr.as_u32,
 				       s->in2out.protocol,
 				       s->in2out.port,
@@ -454,7 +455,7 @@ nat_ed_session_alloc (snat_main_t * sm, snat_user_t * u, u32 thread_index,
 	  nat_log_warn ("max translations per user %U", format_ip4_address,
 			&u->addr);
 	  snat_ipfix_logging_max_entries_per_user
-	    (sm->max_translations_per_user, u->addr.as_u32);
+	    (thread_index, sm->max_translations_per_user, u->addr.as_u32);
 	  return 0;
 	}
       else
@@ -1968,6 +1969,10 @@ snat_interface_add_del_output_feature (u32 sw_if_index,
   snat_interface_t *i;
   snat_address_t *ap;
   snat_static_mapping_t *m;
+  nat_outside_fib_t *outside_fib;
+  u32 fib_index = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
+						       sw_if_index);
+
 
   if (sm->deterministic ||
       (sm->static_mapping_only && !(sm->static_mapping_connection_tracking)))
@@ -1981,6 +1986,34 @@ snat_interface_add_del_output_feature (u32 sw_if_index,
   }));
   /* *INDENT-ON* */
 
+  if (!is_inside)
+    {
+      /* *INDENT-OFF* */
+      vec_foreach (outside_fib, sm->outside_fibs)
+        {
+          if (outside_fib->fib_index == fib_index)
+            {
+              if (is_del)
+                {
+                  outside_fib->refcount--;
+                  if (!outside_fib->refcount)
+                    vec_del1 (sm->outside_fibs, outside_fib - sm->outside_fibs);
+                }
+              else
+                outside_fib->refcount++;
+              goto feature_set;
+            }
+        }
+      /* *INDENT-ON* */
+      if (!is_del)
+	{
+	  vec_add2 (sm->outside_fibs, outside_fib, 1);
+	  outside_fib->refcount = 1;
+	  outside_fib->fib_index = fib_index;
+	}
+    }
+
+feature_set:
   if (is_inside)
     {
       if (sm->endpoint_dependent)
@@ -2525,7 +2558,7 @@ nat_alloc_addr_and_port_default (snat_address_t * addresses,
     }
 
   /* Totally out of translations to use... */
-  snat_ipfix_logging_addresses_exhausted (0);
+  snat_ipfix_logging_addresses_exhausted (thread_index, 0);
   return 1;
 }
 
@@ -2575,7 +2608,7 @@ nat_alloc_addr_and_port_mape (snat_address_t * addresses,
 
 exhausted:
   /* Totally out of translations to use... */
-  snat_ipfix_logging_addresses_exhausted (0);
+  snat_ipfix_logging_addresses_exhausted (thread_index, 0);
   return 1;
 }
 
@@ -2623,7 +2656,7 @@ nat_alloc_addr_and_port_range (snat_address_t * addresses,
 
 exhausted:
   /* Totally out of translations to use... */
-  snat_ipfix_logging_addresses_exhausted (0);
+  snat_ipfix_logging_addresses_exhausted (thread_index, 0);
   return 1;
 }
 
