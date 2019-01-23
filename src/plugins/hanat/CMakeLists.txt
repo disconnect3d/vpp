@@ -41,9 +41,6 @@ add_vpp_plugin(hanat-mapper
   mapper/hanat_state_sync.c
   mapper/node.c
 
-  MULTIARCH_SOURCES
-  mapper/node.c
-
   API_FILES
   mapper/hanat_mapper.api
 
