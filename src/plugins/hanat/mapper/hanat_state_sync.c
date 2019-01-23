@@ -60,6 +60,10 @@ hanat_state_sync_init (vlib_main_t * vm)
   sm->state_sync_buffer = 0;
   sm->state_sync_frame = 0;
   sm->state_sync_count = 0;
+  sm->src_ip_address.as_u32 = 0;
+  sm->failover_ip_address.as_u32 = 0;
+  sm->src_port = 0;
+  sm->failover_port = 0;
 
 #define _(N, s, v) sm->counters[v].name = s;              \
   sm->counters[v].stat_segment_name = "/hanat-mapper/" s; \
@@ -144,7 +148,7 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
   session =
     hanat_mapper_session_create (&nm->db, mapping, &in_r_addr,
 				 event->in_r_port, &out_r_addr,
-				 event->out_r_port, user, now);
+				 event->out_r_port, user, now, 0, 0);
   if (!session)
     {
       clib_warning ("hanat-state-sync: session_create failed");
@@ -294,6 +298,9 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
   vlib_buffer_t *b = 0;
   vlib_frame_t *f;
   u32 bi = ~0, offset;
+
+  if (!sm->failover_port)
+    return;
 
   b = sm->state_sync_buffer;
 

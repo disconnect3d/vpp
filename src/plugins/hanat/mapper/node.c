@@ -104,9 +104,9 @@ static char *hanat_state_sync_error_strings[] = {
 vlib_node_registration_t hanat_mapper_node;
 vlib_node_registration_t hanat_state_sync_node;
 
-static uword
-hanat_mapper_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
-		      vlib_frame_t * frame)
+VLIB_NODE_FN (hanat_mapper_node) (vlib_main_t * vm,
+				  vlib_node_runtime_t * node,
+				  vlib_frame_t * frame)
 {
   u32 n_left_from, *from, next_index, *to_next;
   ip4_main_t *i4m = &ip4_main;
@@ -188,7 +188,6 @@ hanat_mapper_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (hanat_mapper_node) = {
-  .function = hanat_mapper_node_fn,
   .name = "hanat-mapper",
   .vector_size = sizeof (u32),
   .format_trace = format_hanat_mapper_trace,
@@ -203,9 +202,9 @@ VLIB_REGISTER_NODE (hanat_mapper_node) = {
 };
 /* *INDENT-ON* */
 
-static uword
-hanat_state_sync_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
-			  vlib_frame_t * frame)
+VLIB_NODE_FN (hanat_state_sync_node) (vlib_main_t * vm,
+				      vlib_node_runtime_t * node,
+				      vlib_frame_t * frame)
 {
   u32 n_left_from, *from, *to_next_drop;
   f64 now = vlib_time_now (vm);
@@ -281,7 +280,6 @@ hanat_state_sync_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (hanat_state_sync_node) = {
-  .function = hanat_state_sync_node_fn,
   .name = "hanat-state-sync",
   .vector_size = sizeof (u32),
   .format_trace = format_hanat_state_sync_trace,

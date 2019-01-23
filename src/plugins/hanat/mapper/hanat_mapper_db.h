@@ -20,8 +20,7 @@
 #include <vppinfra/bihash_16_8.h>
 #include <vppinfra/dlist.h>
 
-/* *INDENT-OFF* */
-typedef CLIB_PACKED(struct
+typedef struct
 {
   ip4_address_t in_addr;
   u16 in_port;
@@ -31,9 +30,9 @@ typedef CLIB_PACKED(struct
   u32 nsessions;
   u8 proto;
   u8 is_static;
-}) hanat_mapper_mapping_t;
+} hanat_mapper_mapping_t;
 
-typedef CLIB_PACKED(struct
+typedef struct
 {
   ip4_address_t in_r_addr;
   u16 in_r_port;
@@ -48,16 +47,16 @@ typedef CLIB_PACKED(struct
   f64 expire;
   u64 total_bytes;
   u32 total_pkts;
-}) hanat_mapper_session_t;
+  u8 *opaque_data;
+} hanat_mapper_session_t;
 
-typedef CLIB_PACKED(struct
+typedef struct
 {
   ip4_address_t addr;
   u32 tenant_id;
   u32 sessions_per_user_list_head_index;
   u32 nsessions;
-}) hanat_mapper_user_t;
-/* *INDENT-ON* */
+} hanat_mapper_user_t;
 
 typedef struct
 {
@@ -128,7 +127,9 @@ hanat_mapper_session_t *hanat_mapper_session_create (hanat_mapper_db_t *
 						     out_r_addr,
 						     u16 out_r_port,
 						     hanat_mapper_user_t *
-						     user, f64 now);
+						     user, f64 now,
+						     u8 * opaque_data,
+						     u8 opaque_data_len);
 
 #endif /* __included_hanat_mapper_db_h__ */
 

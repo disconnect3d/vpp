@@ -462,7 +462,8 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
 			     hanat_mapper_mapping_t * mapping,
 			     ip4_address_t * in_r_addr, u16 in_r_port,
 			     ip4_address_t * out_r_addr, u16 out_r_port,
-			     hanat_mapper_user_t * user, f64 now)
+			     hanat_mapper_user_t * user, f64 now,
+			     u8 * opaque_data, u8 opaque_data_len)
 {
   hanat_mapper_session_t *session = 0;
   dlist_elt_t *per_user_elt, *oldest_elt;
@@ -510,6 +511,7 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
 	  session->flags = 0;
 	  session->total_bytes = 0;
 	  session->total_pkts = 0;
+	  vec_free (session->opaque_data);
 	}
       else
 	{
@@ -541,6 +543,11 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
   session->out_r_port = out_r_port;
   session->proto = mapping->proto;
   session->mapping_index = mapping - db->mappings;
+  if (opaque_data_len)
+    {
+      session->opaque_data = vec_new (u8, opaque_data_len);
+      clib_memcpy (session->opaque_data, opaque_data, opaque_data_len);
+    }
 
   mapping->nsessions++;
 
