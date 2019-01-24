@@ -99,51 +99,32 @@ vl_api_hanat_mapper_enable_t_print (vl_api_hanat_mapper_enable_t * mp,
 }
 
 static void
-  vl_api_hanat_mapper_add_del_address_range_t_handler
-  (vl_api_hanat_mapper_add_del_address_range_t * mp)
+  vl_api_hanat_mapper_add_del_ext_addr_pool_t_handler
+  (vl_api_hanat_mapper_add_del_ext_addr_pool_t * mp)
 {
-  vl_api_hanat_mapper_add_del_address_range_reply_t *rmp;
+  vl_api_hanat_mapper_add_del_ext_addr_pool_reply_t *rmp;
   hanat_mapper_main_t *nm = &hanat_mapper_main;
-  ip4_address_t this_addr;
-  u32 start_host_order, end_host_order, *tmp;
-  int i, count, rv = 0;
+  int rv = 0;
 
-  tmp = (u32 *) mp->first_ip_address;
-  start_host_order = clib_host_to_net_u32 (tmp[0]);
-  tmp = (u32 *) mp->last_ip_address;
-  end_host_order = clib_host_to_net_u32 (tmp[0]);
+  rv =
+    hanat_mapper_add_del_ext_addr_pool ((ip4_address_t *) & mp->prefix.prefix,
+					mp->prefix.len,
+					clib_net_to_host_u32 (mp->pool_id),
+					mp->is_add);
 
-  count = (end_host_order - start_host_order) + 1;
-
-  memcpy (&this_addr, &mp->first_ip_address, sizeof (this_addr));
-
-  for (i = 0; i < count; i++)
-    {
-      rv =
-	hanat_mapper_add_del_address (&this_addr,
-				      clib_net_to_host_u32 (mp->tenant_id),
-				      mp->is_add);
-
-      if (rv)
-	goto send_reply;
-
-      increment_v4_address (&this_addr);
-    }
-
-send_reply:
-  REPLY_MACRO (VL_API_HANAT_MAPPER_ADD_DEL_ADDRESS_RANGE_REPLY);
+  REPLY_MACRO (VL_API_HANAT_MAPPER_ADD_DEL_EXT_ADDR_POOL_REPLY);
 }
 
-static void *vl_api_hanat_mapper_add_del_address_range_t_print
-  (vl_api_hanat_mapper_add_del_address_range_t * mp, void *handle)
+static void *vl_api_hanat_mapper_add_del_ext_addr_pool_t_print
+  (vl_api_hanat_mapper_add_del_ext_addr_pool_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: hanat_mapper_add_del_address_range ");
-  s = format (s, "%U ", format_ip4_address, mp->first_ip_address);
-  if (memcmp (mp->first_ip_address, mp->last_ip_address, 4))
-    s = format (s, " - %U ", format_ip4_address, mp->last_ip_address);
-  s = format (s, "tenant_id %d", clib_net_to_host_u32 (mp->tenant_id));
+  s = format (0, "SCRIPT: hanat_mapper_add_del_ext_addr_pool ");
+  s =
+    format (s, "%U/%d ", format_ip4_address, mp->prefix.prefix,
+	    mp->prefix.len);
+  s = format (s, "pool_id %d", clib_net_to_host_u32 (mp->pool_id));
 
   FINISH;
 }
@@ -406,7 +387,7 @@ static void *vl_api_hanat_mapper_user_session_dump_t_print
 #define foreach_hanat_mapper_plugin_api_msg                                 \
 _(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                     \
 _(HANAT_MAPPER_ENABLE, hanat_mapper_enable)                                 \
-_(HANAT_MAPPER_ADD_DEL_ADDRESS_RANGE, hanat_mapper_add_del_address_range)   \
+_(HANAT_MAPPER_ADD_DEL_EXT_ADDR_POOL, hanat_mapper_add_del_ext_addr_pool)   \
 _(HANAT_MAPPER_SET_TIMEOUTS, hanat_mapper_set_timeouts)                     \
 _(HANAT_MAPPER_ADD_DEL_STATIC_MAPPING, hanat_mapper_add_del_static_mapping) \
 _(HANAT_MAPPER_SET_STATE_SYNC, hanat_mapper_set_state_sync)                 \

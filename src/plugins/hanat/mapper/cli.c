@@ -56,15 +56,13 @@ done:
 }
 
 static clib_error_t *
-hanat_mapper_add_address_command_fn (vlib_main_t * vm,
-				     unformat_input_t * input,
-				     vlib_cli_command_t * cmd)
+hanat_mapper_add_ext_addr_pool_command_fn (vlib_main_t * vm,
+					   unformat_input_t * input,
+					   vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
-  ip4_address_t start_addr, end_addr, this_addr;
-  u32 start_host_order, end_host_order;
-  u32 tenant_id = ~0;
-  int i, count;
+  ip4_address_t prefix;
+  u32 prefix_len, pool_id;
   int is_add = 1;
   int rv = 0;
   clib_error_t *error = 0;
@@ -75,14 +73,11 @@ hanat_mapper_add_address_command_fn (vlib_main_t * vm,
 
   while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
     {
-      if (unformat (line_input, "%U - %U",
-		    unformat_ip4_address, &start_addr,
-		    unformat_ip4_address, &end_addr))
+      if (unformat
+	  (line_input, "%U/%d", unformat_ip4_address, &prefix, &prefix_len))
 	;
-      else if (unformat (line_input, "tenant-id %u", &tenant_id))
+      else if (unformat (line_input, "pool-id %u", &pool_id))
 	;
-      else if (unformat (line_input, "%U", unformat_ip4_address, &start_addr))
-	end_addr = start_addr;
       else if (unformat (line_input, "del"))
 	is_add = 0;
       else
@@ -93,35 +88,20 @@ hanat_mapper_add_address_command_fn (vlib_main_t * vm,
 	}
     }
 
-  start_host_order = clib_host_to_net_u32 (start_addr.as_u32);
-  end_host_order = clib_host_to_net_u32 (end_addr.as_u32);
+  rv =
+    hanat_mapper_add_del_ext_addr_pool (&prefix, (u8) prefix_len, pool_id,
+					is_add);
 
-  if (end_host_order < start_host_order)
+  switch (rv)
     {
-      error = clib_error_return (0, "end address less than start address");
+    case VNET_API_ERROR_VALUE_EXIST:
+      error = clib_error_return (0, "NAT address already in use.");
       goto done;
-    }
-
-  count = (end_host_order - start_host_order) + 1;
-  this_addr = start_addr;
-
-  for (i = 0; i < count; i++)
-    {
-      rv = hanat_mapper_add_del_address (&this_addr, tenant_id, is_add);
-
-      switch (rv)
-	{
-	case VNET_API_ERROR_VALUE_EXIST:
-	  error = clib_error_return (0, "NAT address already in use.");
-	  goto done;
-	case VNET_API_ERROR_NO_SUCH_ENTRY:
-	  error = clib_error_return (0, "NAT address not exist.");
-	  goto done;
-	default:
-	  break;
-	}
-
-      increment_v4_address (&this_addr);
+    case VNET_API_ERROR_NO_SUCH_ENTRY:
+      error = clib_error_return (0, "NAT address not exist.");
+      goto done;
+    default:
+      break;
     }
 
 done:
@@ -471,11 +451,11 @@ VLIB_CLI_COMMAND (hanat_mapper_enable_command, static) = {
   .function = hanat_mapper_enable_command_fn,
 };
 
-VLIB_CLI_COMMAND (hanat_mapper_add_address_command, static) = {
-  .path = "hanat-mapper add address",
-  .short_help = "hanat-mapper add address <ip4-range-start> "
-                "[- <ip4-range-end>] [tenant-id <id>] [del]",
-  .function = hanat_mapper_add_address_command_fn,
+VLIB_CLI_COMMAND (hanat_mapper_add_ext_addr_pool_command, static) = {
+  .path = "hanat-mapper add external address pool",
+  .short_help =
+      "hanat-mapper add external address pool <ip4-pfx> pool-id <id> [del]",
+  .function = hanat_mapper_add_ext_addr_pool_command_fn,
 };
 
 VLIB_CLI_COMMAND (hanat_mapper_set_timeout_command, static) = {
