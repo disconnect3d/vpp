@@ -1,6 +1,8 @@
 #include <assert.h>
 #include "hanat_worker_db.h"
+#include <vnet/udp/udp_packet.h>
 #include <vppinfra/bihash_template.c>
+#include <vppinfra/vec.h>
 
 /*
  * Functions:
@@ -36,6 +38,25 @@ hanat_db_free (hanat_db_t * db)
   clib_bihash_free_16_8 (&db->cache);
 }
 
+static void
+hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
+{
+  u16 sport = 0, dport = 0;
+  if (ip->protocol == IP_PROTOCOL_TCP ||
+      ip->protocol == IP_PROTOCOL_UDP) {
+    udp_header_t *udp = ip4_next_header (ip);
+    sport = udp->src_port;
+    dport = udp->dst_port;
+  }
+
+  key->sa = ip->src_address;
+  key->da = ip->dst_address;
+  key->proto = ip->protocol;
+  key->fib_index = fib_index;
+  key->sp = sport;
+  key->dp = dport;
+}
+
 hanat_session_t *
 hanat_session_find (hanat_db_t *db, hanat_session_key_t *key)
 {
@@ -50,6 +71,14 @@ hanat_session_find (hanat_db_t *db, hanat_session_key_t *key)
   if (pool_is_free_index (db->sessions, value.value)) /* Is this check necessary? */
     return 0;
   return pool_elt_at_index (db->sessions, value.value);
+}
+
+hanat_session_t *
+hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip)
+{
+  hanat_session_key_t key;
+  hanat_key_from_ip(fib_index, ip, &key);
+  return hanat_session_find(db, &key);
 }
 
 static int
@@ -71,6 +100,7 @@ hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry
     
   /* Add session to pool */
   pool_get_zero(db->sessions, s);
+  s->key = *key;
   s->entry = *e;
 
   /* Add to index */
@@ -86,6 +116,37 @@ hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry
   if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, 0))
     assert(0);
   return s;
+}
+
+void
+hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi)
+{
+  hanat_session_key_t key;
+  hanat_session_entry_t e = {0};
+  hanat_session_t *s;
+
+  hanat_key_from_ip(fib_index, ip, &key);
+  /* Check if session already exists */
+  s = hanat_session_find(db, &key);
+  if (s) {
+    /* Just buffer packet */
+    vec_add1(s->entry.buffer_vec, bi);
+    return;
+  }
+
+  /* Add session to pool */
+  pool_get_zero(db->sessions, s);
+  s->key = key;
+  vec_add1(s->entry.buffer_vec, bi);
+  s->entry = e;
+
+  /* Add to index */
+  clib_bihash_kv_16_8_t kv;
+  kv.key[0] = key.as_u64[0];
+  kv.key[1] = key.as_u64[1];
+  kv.value = s - db->sessions;
+  if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, 0))
+    assert(0);
 }
 
 void

@@ -116,35 +116,14 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
   return true;
 }
 
-static void
-hanat_key_from_packet (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
-{
-  u16 sport = 0, dport = 0;
-  if (ip->protocol == IP_PROTOCOL_TCP ||
-      ip->protocol == IP_PROTOCOL_UDP) {
-    udp_header_t *udp = ip4_next_header (ip);
-    sport = udp->src_port;
-    dport = udp->dst_port;
-  }
-
-  key->sa = ip->src_address;
-  key->da = ip->dst_address;
-  key->proto = ip->protocol;
-  key->fib_index = fib_index;
-  key->sp = sport;
-  key->dp = dport;
-}
-
 
 static bool
 hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 *out_fib_index)
 {
-  hanat_session_key_t key;
   hanat_session_t *s;
 
   /* 6-tuple lookup */
-  hanat_key_from_packet(fib_index, ip, &key);
-  s = hanat_session_find(db, &key);
+  s = hanat_session_find_ip(db, fib_index, ip);
   if (!s)
     return false;
   *out_fib_index = s->entry.fib_index;
