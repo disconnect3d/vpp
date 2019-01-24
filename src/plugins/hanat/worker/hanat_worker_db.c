@@ -167,7 +167,7 @@ hanat_lpm_64_add (hanat_pool_t *lpm, void *addr_v, u8 pfxlen, u32 value)
   u64 *addr = addr_v;
 
   kv.key[0] = masked_address64(*addr, pfxlen);
-  kv.key[2] = pfxlen;
+  kv.key[1] = pfxlen;
   kv.value = value;
   BV(clib_bihash_add_del)(&lpm->bihash, &kv, 1);
   lpm->prefix_length_refcount[pfxlen]++;
@@ -180,7 +180,7 @@ hanat_lpm_64_delete (hanat_pool_t *lpm, void *addr_v, u8 pfxlen)
   u64 *addr = addr_v;
   BVT(clib_bihash_kv) kv;
   kv.key[0] = masked_address64(*addr, pfxlen);
-  kv.key[2] = pfxlen;
+  kv.key[1] = pfxlen;
   BV(clib_bihash_add_del)(&lpm->bihash, &kv, 0);
 
   /* refcount accounting */

@@ -27,11 +27,6 @@ add_vpp_plugin(hanat-worker
   worker/hanat_worker_msg_enum.h
 )
 
-add_vpp_executable(test_hanat_worker
-  SOURCES worker/test_hanat_worker.c worker/hanat_worker_db.c
-  LINK_LIBRARIES vppinfra
-)
-
 add_vpp_plugin(hanat-mapper
   SOURCES
   mapper/cli.c
@@ -48,3 +43,9 @@ add_vpp_plugin(hanat-mapper
   mapper/hanat_mapper_all_api_h.h
   mapper/hanat_mapper_msg_enum.h
 )
+
+#add_vpp_executable(test_hanat_worker
+#  SOURCES worker/test_hanat_worker.c worker/hanat_worker_db.c
+#  LINK_LIBRARIES vppinfra
+#  NO_INSTALL
+#)
