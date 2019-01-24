@@ -52,6 +52,12 @@ typedef struct
 #undef _
 } hanat_mapper_address_t;
 
+typedef struct
+{
+  u32 pool_id;
+  hanat_mapper_address_t *addresses;
+} hanat_mapper_addr_pool_t;
+
 typedef struct hanat_mapper_main_s
 {
   /* API message ID base */
@@ -60,8 +66,9 @@ typedef struct hanat_mapper_main_s
   /* mapper settings */
   u16 port;
 
-  /* external address pool */
-  hanat_mapper_address_t *addresses;
+  /* external address pools */
+  hanat_mapper_addr_pool_t *ext_addr_pool;
+  uword *pool_index_by_pool_id;
 
   /* values of various timeouts */
   u32 udp_timeout;
@@ -87,12 +94,10 @@ extern vlib_node_registration_t hanat_state_sync_node;
 clib_error_t *hanat_mapper_api_init (vlib_main_t * vm,
 				     hanat_mapper_main_t * nm);
 
-void increment_v4_address (ip4_address_t * a);
-
 int hanat_mapper_enable (u16 port);
 
-int hanat_mapper_add_del_address (ip4_address_t * addr, u32 tenant_id,
-				  u8 is_add);
+int hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
+					u32 pool_id, u8 is_add);
 
 int hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 					 ip4_address_t * external_addr,

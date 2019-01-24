@@ -106,8 +106,7 @@ vlib_node_registration_t hanat_state_sync_node;
 
 static uword
 hanat_mapper_node_fn (vlib_main_t * vm,
-				  vlib_node_runtime_t * node,
-				  vlib_frame_t * frame)
+		      vlib_node_runtime_t * node, vlib_frame_t * frame)
 {
   u32 n_left_from, *from, next_index, *to_next;
   ip4_main_t *i4m = &ip4_main;
@@ -206,8 +205,7 @@ VLIB_REGISTER_NODE (hanat_mapper_node) = {
 
 static uword
 hanat_state_sync_node_fn (vlib_main_t * vm,
-				      vlib_node_runtime_t * node,
-				      vlib_frame_t * frame)
+			  vlib_node_runtime_t * node, vlib_frame_t * frame)
 {
   u32 n_left_from, *from, *to_next_drop;
   f64 now = vlib_time_now (vm);

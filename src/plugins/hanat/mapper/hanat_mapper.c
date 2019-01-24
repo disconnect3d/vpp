@@ -39,6 +39,7 @@ hanat_mapper_init (vlib_main_t * vm)
   nm->tcp_established_timeout = HANAT_MAPPER_TCP_ESTABLISHED_TIMEOUT;
   nm->tcp_transitory_timeout = HANAT_MAPPER_TCP_TRANSITORY_TIMEOUT;
   nm->icmp_timeout = HANAT_MAPPER_ICMP_TIMEOUT;
+  nm->pool_index_by_pool_id = hash_create (0, sizeof (uword));
 
   nm->vlib_main = vm;
   nm->vnet_main = vnet_get_main ();
@@ -65,7 +66,7 @@ hanat_mapper_enable (u16 port)
   return 0;
 }
 
-void
+static inline void
 increment_v4_address (ip4_address_t * a)
 {
   u32 v;
@@ -74,49 +75,73 @@ increment_v4_address (ip4_address_t * a)
   a->as_u32 = clib_host_to_net_u32 (v);
 }
 
-int
-hanat_mapper_add_del_address (ip4_address_t * addr, u32 tenant_id, u8 is_add)
+static inline hanat_mapper_addr_pool_t *
+get_pool_by_pool_id (u32 pool_id)
 {
   hanat_mapper_main_t *nm = &hanat_mapper_main;
-  hanat_mapper_address_t *address = 0, *a;
+  hanat_mapper_addr_pool_t *pool;
+  uword *p = hash_get (nm->pool_index_by_pool_id, pool_id);
+  if (!p)
+    return 0;
 
-  /* *INDENT-OFF* */
-  pool_foreach (a, nm->addresses,
-  ({
-    if (a->addr.as_u32 == addr->as_u32)
-      {
-        address = a;
-        break;
-      }
-  }));
-  /* *INDENT-ON* */
+  pool = pool_elt_at_index (nm->ext_addr_pool, p[0]);
+  return pool;
+}
+
+int
+hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
+				    u32 pool_id, u8 is_add)
+{
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  hanat_mapper_addr_pool_t *pool;
+  hanat_mapper_address_t *address;
+  ip4_address_t start_addr, end_addr, this_addr;
+  int i, count;
+
+  pool = get_pool_by_pool_id (pool_id);
 
   if (is_add)
     {
-      if (address)
+      if (pool)
 	return VNET_API_ERROR_VALUE_EXIST;
 
-      pool_get (nm->addresses, address);
-
-      address->tenant_id = tenant_id;
-
+      pool_get (nm->ext_addr_pool, pool);
+      pool->pool_id = pool_id;
+      hash_set (nm->pool_index_by_pool_id, pool_id, pool - nm->ext_addr_pool);
+      start_addr.as_u32 = prefix->as_u32;
+      ip4_address_normalize (&start_addr, prefix_len);
+      ip4_prefix_max_address_host_order (&start_addr, prefix_len, &end_addr);
+      count =
+	(end_addr.as_u32 - clib_net_to_host_u32 (start_addr.as_u32)) + 1;
+      this_addr = start_addr;
+      for (i = 0; i < count; i++)
+	{
+	  vec_add2 (pool->addresses, address, 1);
 #define _(N, id, n, s) \
       clib_bitmap_alloc (address->busy_##n##_port_bitmap, 65535); \
       address->busy_##n##_ports = 0;
-      foreach_hanat_mapper_protocol
+	  foreach_hanat_mapper_protocol
 #undef _
+	    increment_v4_address (&this_addr);
+	}
     }
   else
     {
-      if (!address)
+      if (!pool)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
-      //TODO: delete sessions using address
+      vec_foreach (address, pool->addresses)
+      {
+	//TODO: delete sessions using address
 #define _(N, id, n, s) \
       clib_bitmap_free (address->busy_##n##_port_bitmap);
-      foreach_hanat_mapper_protocol
+	foreach_hanat_mapper_protocol
 #undef _
-	pool_put (nm->addresses, address);
+      }
+
+      vec_free (pool->addresses);
+      hash_unset (nm->pool_index_by_pool_id, pool->pool_id);
+      pool_put (nm->ext_addr_pool, pool);
     }
 
   return 0;
