@@ -26,8 +26,12 @@ static clib_error_t *
 hanat_worker_init (vlib_main_t * vm)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
+  vlib_node_t *ip4_lookup_node;
   clib_memset (hm, 0, sizeof (*hm));
   hanat_db_init(&hm->db, 1024, 2000000);
+
+  ip4_lookup_node = vlib_get_node_by_name (vm, (u8 *) "ip4-lookup");
+  hm->ip4_lookup_node_index = ip4_lookup_node->index;
 
   hanat_mapper_table_init(&hm->pool_db);
   hm->pool_db.n_buckets = 1024;

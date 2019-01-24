@@ -24,6 +24,7 @@
 #include <vnet/fib/fib_table.h>
 #endif
 #include "hanat_worker_db.h"
+#include "../protocol/hanat_protocol.h"
 
 /*
  * hanat-worker-slow NEXT nodes
@@ -122,6 +123,74 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
   return mid;
 }
 
+static int
+send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *pe)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  u16 len;
+
+  /* Allocate buffer */
+  u32 bi;
+  vlib_buffer_t *b;
+  if (vlib_buffer_alloc (vm, &bi, 1) != 1)
+    return -1;
+
+  b = vlib_get_buffer (vm, bi);
+  VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
+  b->flags |= VNET_BUFFER_F_LOCALLY_ORIGINATED;
+  vnet_buffer (b)->sw_if_index[VLIB_RX] = 0;
+  vnet_buffer (b)->sw_if_index[VLIB_TX] = ~0; //fib_index;
+
+  ip4_header_t *ip = vlib_buffer_get_current (b);
+  ip->ip_version_and_header_length = 0x45;
+  ip->flags_and_fragment_offset =
+    clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
+  ip->ttl = 1;
+  ip->protocol = IP_PROTOCOL_UDP;
+  ip->src_address.as_u32 = pe->src.ip4.as_u32;
+  ip->dst_address.as_u32 = pe->mapper.ip4.as_u32;
+  ip->checksum = ip4_header_checksum (ip);
+  len = sizeof(ip4_header_t);
+
+  udp_header_t *udp = (udp_header_t *) (ip + 1);
+  udp->src_port = htons(hm->udp_port);
+  udp->dst_port = htons(pe->udp_port);
+  len += sizeof (udp_header_t);
+
+  hanat_header_t *hanat = (hanat_header_t *) (udp + 1);
+  hanat->core_id = 0;
+  len += sizeof (hanat_header_t);
+
+  hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
+  req->type = HANAT_SESSION_REQUEST;
+  req->length = 0;
+  req->session_id = 0;
+  req->pool_id = 0;
+  req->desc.sa.as_u32 = 0;
+  req->desc.da.as_u32 = 0;
+  req->desc.sp = 0;
+  req->desc.dp = 0;
+
+  len += sizeof (hanat_option_session_request_t);
+
+  ip->length = htons(len);
+  ip->checksum = ip4_header_checksum (ip);
+  udp->length = htons (len - sizeof(ip4_header_t));
+
+  /* Add to frame */
+  vlib_frame_t *f;
+  u32 *to_next;
+  f = vlib_get_frame_to_node (vm, hm->ip4_lookup_node_index);
+  to_next = vlib_frame_vector_args (f);
+  to_next[0] = bi;
+  f->n_vectors = 1;
+  vlib_put_frame_to_node (vm, hm->ip4_lookup_node_index, f);
+      
+  //vlib_node_increment_counter (vm, flowprobe_l2_node.index,
+  //FLOWPROBE_ERROR_EXPORTED_PACKETS, 1);
+  return 0;
+}
+
 static uword
 hanat_worker_slow_output (vlib_main_t * vm,
 			  vlib_node_runtime_t * node,
@@ -157,7 +226,7 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  b0 = vlib_get_buffer (vm, bi0);
 
 	  ip0 = (ip4_header_t *) vlib_buffer_get_current (b0);
-	  u16 plen = ntohs(ip0->length);
+	  //u16 plen = ntohs(ip0->length);
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
@@ -166,51 +235,28 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
 	  if (pe) {
 	    clib_warning("Found mapper %U", format_ip46_address, &pe->mapper);
-	    
 
-	    /*
-	     * Encap packet
-	     */
-	    ip4_header_t *ip40;
-	    udp_header_t *udp0;
-	    vlib_buffer_advance (b0, -sizeof (ip4_header_t) + sizeof(udp_header_t));
-	    ip40 = vlib_buffer_get_current (b0);
-	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+	    hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
+	    send_hanat_protocol_request(vm, bi0, pe);
 
-	    ip40->ip_version_and_header_length = 0x45;
-	    ip40->ttl = 64;
-	    ip40->protocol = IP_PROTOCOL_UDP;
-	    /* fixup ip4 header length and checksum after-the-fact */
-	    ip40->src_address.as_u32 = pe->src.ip4.as_u32;
-	    ip40->dst_address.as_u32 = pe->mapper.ip4.as_u32;
-	    ip40->checksum = ip4_header_checksum (ip40);
-
-	    ip40->length = htons(plen + sizeof (ip4_header_t) + sizeof(udp_header_t));
-	    ip40->checksum = ip4_header_checksum (ip40);
-	    udp0 = (udp_header_t *)(ip40+1);
-	    udp0->src_port = htons(hm->udp_port);
-	    udp0->dst_port = htons(pe->udp_port);
-	    udp0->length = htons(plen + sizeof(udp_header_t));
-	    udp0->checksum = 0;
-	    //hanat_header_t *ha0 = (hanat_header_t *)(udp0 + 1);
-	    //ha0->command = HANAT_CACHE_MISS;
-	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_IP4_LOOKUP;
 	  } else {
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
-	  }
-	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
-			     && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
-	    hanat_worker_slow_trace_t *t =
-	      vlib_add_trace (vm, node, b0, sizeof (*t));
-	  }
+	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
+			       && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
+	      hanat_worker_slow_trace_t *t =
+		vlib_add_trace (vm, node, b0, sizeof (*t));
+	    }
 
-	  /* verify speculative enqueue, maybe switch current next frame */
-	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					   to_next, n_left_to_next,
-					   bi0, next0);
+	    /* verify speculative enqueue, maybe switch current next frame */
+	    vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					     to_next, n_left_to_next,
+					     bi0, next0);
+
+	  }
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
+  //send_protocol_requests();
   return frame->n_vectors;
 }
 

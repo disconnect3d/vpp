@@ -35,6 +35,12 @@
  *
  */
 
+/* Defined in hanat_worker.api */
+#define vl_typedefs
+#include <hanat/worker/hanat_worker_all_api_h.h>
+#undef vl_typedefs
+typedef vl_api_hanat_instructions_t hanat_instructions_t;
+
 /*
  * Message header
  */
@@ -67,6 +73,7 @@ typedef struct {
   u8 type;		/* Session request */
   u8 length;
   u32 session_id;
+  u32 pool_id;
   hanat_session_descriptor_t desc;
   u8 opaque_data[0];
 } hanat_option_session_request_t;

@@ -21,10 +21,7 @@
 #include <vppinfra/bihash_template.h>
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/ip/ip6_packet.h>
-
-#define vl_typedefs
-#include <hanat/worker/hanat_worker_all_api_h.h>
-#undef vl_typedefs
+#include "../protocol/hanat_protocol.h"
 
 #define HANAT_WORKER_UDP_PORT		1234
 
@@ -44,8 +41,6 @@ typedef struct {
   };
 } hanat_session_key_t;
 
-/* Defined in hanat_worker.api */
-typedef vl_api_hanat_instructions_t hanat_instructions_t;
 
 /* TODO:
  * Different type of session state caches
@@ -67,10 +62,11 @@ typedef struct {
   ip_csum_t l4_checksum;
   u16 tcp_mss;
   //  vlib_combined_counter_t counter;
+  u32 *buffer_vec;
 } hanat_session_entry_t;
 
 typedef struct {
-  hanat_session_key_t key;
+  hanat_session_key_t key; // USED?
   hanat_session_entry_t entry;
 } hanat_session_t;
 
@@ -125,6 +121,8 @@ typedef struct {
   hanat_interface_t *interfaces;
   u32 *interface_by_sw_if_index;
 
+  u32 ip4_lookup_node_index;
+
   /* API message ID base */
   u16 msg_id_base;
 } hanat_worker_main_t;
@@ -136,10 +134,12 @@ void hanat_db_free (hanat_db_t * db);
 hanat_session_t *hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry_t *e);
 void hanat_session_delete (hanat_db_t *db, hanat_session_key_t *key);
 hanat_session_t *hanat_session_find (hanat_db_t *db, hanat_session_key_t *key);
+hanat_session_t *hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip);
 
 int hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode);
 clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
+void hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi);
 int hanat_worker_mapper_add_del(bool is_add, u32 fib_index, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[]);
