@@ -52,8 +52,9 @@ typedef struct {
  * TLV Types
  */
 #define HANAT_SESSION_REQUEST 0x00
-#define HANAT_SESSION_REPLY   0x01
-#define HANAT_SESSION_UPDATE  0x02
+#define HANAT_SESSION_BINDING 0x01
+#define HANAT_SESSION_REFRESH 0x02
+#define HANAT_SESSION_DECLINE 0x03
 
 /*
  * Session descriptor
@@ -67,7 +68,7 @@ typedef struct {
 } __attribute__((packed)) hanat_session_descriptor_t;
 
 /*
- * Session request / reply
+ * Session request / binding
  */
 typedef struct {
   u8 type;		/* Session request */
@@ -89,7 +90,14 @@ typedef struct {
   u16 sp;
   u16 dp;
   u8 opaque_data[0];
-} hanat_option_session_reply_t;
+}  __attribute__((packed)) hanat_option_session_binding_t;
+
+typedef struct {
+  u8 type;		/* Session decline */
+  u8 length;
+  u32 session_id;
+  u8 code;		/* Reason code */
+}  __attribute__((packed)) hanat_option_session_decline_t;
 
 /*
  * Session update
@@ -106,6 +114,6 @@ typedef struct {
   hanat_flags_t flags;
   u64 packets;
   u64 bytes;
-} hanat_option_session_update_t;
+}  __attribute__((packed)) hanat_option_session_refresh_t;
 
 #endif
