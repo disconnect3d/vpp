@@ -24,6 +24,7 @@ class Event(Packet):
                    IPField("out_r_addr", None),
                    ShortField("out_l_port", None),
                    ShortField("out_r_port", None),
+                   IntField("pool_id", None),
                    IntField("tenant_id", None)]
 
     def extract_padding(self, s):
@@ -75,11 +76,13 @@ class TestHANATmapper(VppTestCase):
                  Event(event_type='add', protocol='tcp', in_l_addr='1.2.3.4',
                        in_r_addr='1.2.3.5', in_l_port=12345, in_r_port=80,
                        out_l_addr='2.3.4.5', out_r_addr='1.2.3.5',
-                       out_l_port=34567, out_r_port=80, tenant_id=1),
+                       out_l_port=34567, out_r_port=80, tenant_id=1,
+                       pool_id=2),
                  Event(event_type='add', protocol='tcp', in_l_addr='1.2.3.6',
                        in_r_addr='1.2.3.5', in_l_port=12345, in_r_port=80,
                        out_l_addr='2.3.4.5', out_r_addr='1.2.3.5',
-                       out_l_port=34756, out_r_port=80, tenant_id=1)]))
+                       out_l_port=34756, out_r_port=80, tenant_id=1,
+                       pool_id=2)]))
         self.pg0.add_stream(p)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -101,7 +104,8 @@ class TestHANATmapper(VppTestCase):
                  Event(event_type='del', protocol='tcp', in_l_addr='1.2.3.4',
                        in_r_addr='1.2.3.5', in_l_port=12345, in_r_port=80,
                        out_l_addr='2.3.4.5', out_r_addr='1.2.3.5',
-                       out_l_port=34567, out_r_port=80, tenant_id=1)]))
+                       out_l_port=34567, out_r_port=80, tenant_id=1,
+                       pool_id=2)]))
         self.pg0.add_stream(p)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -130,13 +134,13 @@ class TestHANATmapper(VppTestCase):
         cli_str += "in-local 1.2.3.4:12345 "
         cli_str += "in-remote 1.2.3.5:80 "
         cli_str += "out-local 2.3.4.5:34567 "
-        cli_str += "out-remote 1.2.3.5:80 tcp tenant-id 1"
+        cli_str += "out-remote 1.2.3.5:80 tcp tenant-id 1 pool-id 2"
         self.vapi.cli(cli_str)
         cli_str = "hanat-mapper add session "
         cli_str += "in-local 1.2.3.4:12346 "
         cli_str += "in-remote 1.2.3.5:80 "
         cli_str += "out-local 2.3.4.5:3467 "
-        cli_str += "out-remote 1.2.3.5:80 tcp tenant-id 1"
+        cli_str += "out-remote 1.2.3.5:80 tcp tenant-id 1 pool-id 2"
         self.vapi.cli(cli_str)
         self.vapi.cli("hanat-mapper state sync flush")
         capture = self.pg0.get_capture(1)
@@ -160,6 +164,7 @@ class TestHANATmapper(VppTestCase):
             self.assertIn(event.in_l_port, [12345, 12346])
             self.assertIn(event.out_l_port, [34567, 3467])
             self.assertEqual(event.tenant_id, 1)
+            self.assertEqual(event.pool_id, 2)
 
         stats = self.statistics.get_counter('/hanat-mapper/add-event-send')
         self.assertEqual(stats[0][0], 2)

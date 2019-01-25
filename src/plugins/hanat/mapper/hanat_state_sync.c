@@ -105,7 +105,7 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
   hanat_mapper_mapping_t *mapping;
   hanat_mapper_user_t *user;
   ip4_address_t in_l_addr, in_r_addr, out_l_addr, out_r_addr;
-  u32 tenant_id;
+  u32 tenant_id, pool_id;
 
   vlib_increment_simple_counter (&sm->counters
 				 [HANAT_STATE_SYNC_COUNTER_RECV_ADD],
@@ -116,6 +116,7 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
   out_l_addr.as_u32 = event->out_l_addr;
   out_r_addr.as_u32 = event->out_r_addr;
   tenant_id = clib_net_to_host_u32 (event->tenant_id);
+  pool_id = clib_net_to_host_u32 (event->pool_id);
 
   user = hanat_mapper_user_get (&nm->db, &in_l_addr, tenant_id);
   if (!user)
@@ -136,7 +137,7 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
       mapping =
 	hanat_mapper_mappig_create (&nm->db, &in_l_addr, event->in_l_port,
 				    &out_l_addr, event->out_l_port,
-				    event->protocol, tenant_id, 0);
+				    event->protocol, pool_id, tenant_id, 0);
 
       if (!mapping)
 	{

@@ -177,7 +177,7 @@ hanat_mapper_add_static_mapping_command_fn (vlib_main_t * vm,
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   ip4_address_t l_addr, e_addr;
-  u32 tenant_id = 0, l_port, e_port;
+  u32 tenant_id = 0, l_port, e_port, pool_id;
   int rv = 0;
   clib_error_t *error = 0;
   u8 is_add = 1;
@@ -197,6 +197,8 @@ hanat_mapper_add_static_mapping_command_fn (vlib_main_t * vm,
 	;
       else if (unformat (line_input, "tenant-id %u", &tenant_id))
 	;
+      else if (unformat (line_input, "pool-id %u", &pool_id))
+	;
       else
 	if (unformat
 	    (line_input, "%U", unformat_hanat_mapper_protocol, &proto))
@@ -215,7 +217,7 @@ hanat_mapper_add_static_mapping_command_fn (vlib_main_t * vm,
     hanat_mapper_add_del_static_mapping (&l_addr, &e_addr,
 					 clib_host_to_net_u16 (l_port),
 					 clib_host_to_net_u16 (e_port), proto,
-					 tenant_id, is_add);
+					 tenant_id, pool_id, is_add);
 
   if (rv)
     {
@@ -376,7 +378,7 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   ip4_address_t in_l_addr, in_r_addr, out_l_addr, out_r_addr;
-  u32 tenant_id = 0, in_l_port, in_r_port, out_l_port, out_r_port;
+  u32 tenant_id = 0, in_l_port, in_r_port, out_l_port, out_r_port, pool_id;
   hanat_mapper_protocol_t proto = ~0;
   u8 is_add = 1;
   clib_error_t *error = 0;
@@ -409,6 +411,8 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
 	;
       else if (unformat (line_input, "tenant-id %u", &tenant_id))
 	;
+      else if (unformat (line_input, "pool-id %u", &pool_id))
+	;
       else
 	if (unformat
 	    (line_input, "%U", unformat_hanat_mapper_protocol, &proto))
@@ -432,6 +436,7 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   event.out_l_port = clib_host_to_net_u16 (out_l_port);
   event.out_r_port = clib_host_to_net_u16 (out_r_port);
   event.tenant_id = clib_host_to_net_u32 (tenant_id);
+  event.pool_id = clib_host_to_net_u32 (pool_id);
   event.protocol = proto;
   event.flags = 0;
   event.event_type = is_add ? HANAT_STATE_SYNC_ADD : HANAT_STATE_SYNC_DEL;
@@ -470,7 +475,7 @@ VLIB_CLI_COMMAND (hanat_mapper_add_static_mapping_command, static) = {
   .path = "hanat-mapper add static mapping",
   .short_help = "hanat-mapper add static mapping tcp|udp|icmp "
                 "local <ip-addr>:<port> external <ip-addr>:<port> "
-                "[tenant-id <id>] [del]",
+                "pool-id <id> [tenant-id <id>] [del]",
   .function = hanat_mapper_add_static_mapping_command_fn,
 };
 
@@ -498,7 +503,8 @@ VLIB_CLI_COMMAND (hanat_mapper_add_session_command, static) = {
   .path = "hanat-mapper add session",
   .short_help = "hanat-mapper add session in-local <ip-addr>:<port> "
                 "in-remote <ip-addr>:<port> out-local <ip-addr>:<port> "
-                "out-remote<ip-addr>:<port> tcp|udp|icmp tenant-id <id> [del]",
+                "out-remote<ip-addr>:<port> tcp|udp|icmp tenant-id <id> "
+                "pool-id <id> [del]",
   .function = hanat_mapper_add_session_command_fn,
 };
 
