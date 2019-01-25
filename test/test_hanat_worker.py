@@ -82,9 +82,10 @@ class TestHANAT(VppTestCase):
                'dp': 80,
                'proto': 6}
 
-        instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS +
-                        VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_PORT +
-                        VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_DESTINATION_PORT)
+        #instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS +
+        #                VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_PORT +
+        #                VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_DESTINATION_PORT)
+        instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS)
 
         rv = self.vapi.papi.hanat_worker_cache_add(key=key, instructions=instructions, post_sa='1.1.1.1', post_sp=4002,
                                                    post_dp=5555)
@@ -114,7 +115,17 @@ class TestHANAT(VppTestCase):
         p_ip4 = IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) / UDP(sport=1234, dport=1234) / HANAT() / HANATSessionReply()
         p4 = (p_ether / p_ip4)
         p4.show2()
-        self.send_and_assert_no_replies(self.pg0, p4 * 1)
+        rx = self.send_and_expect(self.pg0, p4 * 1, self.pg1)
+        for p in rx:
+            p.show2()
+
+        # Send session binding
+
+
+        # Dump cache
+        rv = self.vapi.papi.hanat_worker_cache_dump()
+        print('RV', rv)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)

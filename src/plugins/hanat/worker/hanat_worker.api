@@ -110,3 +110,19 @@ autoreply define hanat_worker_cache_add {
   u16 post_sp;
   u16 post_dp;
 };
+
+define hanat_worker_cache_dump {
+  u32 client_index;
+  u32 context;
+};
+define hanat_worker_cache_details {
+  u32 client_index;
+  u32 context;
+  vl_api_hanat_session_key_t key;
+  vl_api_hanat_instructions_t instructions;
+  u32 post_fib_index;
+  vl_api_ip4_address_t post_sa;
+  vl_api_ip4_address_t post_da;
+  u16 post_sp;
+  u16 post_dp;
+};
