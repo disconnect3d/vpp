@@ -54,7 +54,6 @@ define hanat_worker_mapper_add_del {
   u32 client_index;
   u32 context;
   bool is_add;
-  u32 fib_index;
   u32 pool_id;
   vl_api_ip4_prefix_t pool;
   vl_api_address_t src;
