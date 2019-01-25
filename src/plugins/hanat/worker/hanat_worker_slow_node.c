@@ -26,6 +26,8 @@
 #include "hanat_worker_db.h"
 #include "../protocol/hanat_protocol.h"
 
+static vlib_node_registration_t hanat_worker_slow_output_node;
+
 /*
  * hanat-worker-slow NEXT nodes
  */
@@ -57,7 +59,7 @@ typedef enum {
  */
 #define foreach_hanat_worker_slow_counters		\
   /* Must be first. */				\
-  _(FOOBAR, "cache hit")
+  _(MAPPER_REQUEST, "mapper request")
 
 typedef enum
 {
@@ -124,7 +126,7 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
 }
 
 static int
-send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *pe)
+send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b, hanat_pool_entry_t *pe, hanat_session_t *session)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u16 len;
@@ -137,6 +139,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *
 
   b = vlib_get_buffer (vm, bi);
   VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
+  b->flags |= org_b->flags & VLIB_BUFFER_IS_TRACED;
   b->flags |= VNET_BUFFER_F_LOCALLY_ORIGINATED;
   vnet_buffer (b)->sw_if_index[VLIB_RX] = 0;
   vnet_buffer (b)->sw_if_index[VLIB_TX] = ~0; //fib_index;
@@ -145,7 +148,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *
   ip->ip_version_and_header_length = 0x45;
   ip->flags_and_fragment_offset =
     clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
-  ip->ttl = 1;
+  ip->ttl = 64;
   ip->protocol = IP_PROTOCOL_UDP;
   ip->src_address.as_u32 = pe->src.ip4.as_u32;
   ip->dst_address.as_u32 = pe->mapper.ip4.as_u32;
@@ -158,24 +161,29 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *
   len += sizeof (udp_header_t);
 
   hanat_header_t *hanat = (hanat_header_t *) (udp + 1);
-  hanat->core_id = 0;
+  hanat->core_id = 0L;
   len += sizeof (hanat_header_t);
 
   hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
   req->type = HANAT_SESSION_REQUEST;
-  req->length = 0;
+  req->length = sizeof(hanat_option_session_request_t);
   req->session_id = 0;
   req->pool_id = 0;
-  req->desc.sa.as_u32 = 0;
-  req->desc.da.as_u32 = 0;
-  req->desc.sp = 0;
-  req->desc.dp = 0;
+
+  req->desc.sa.as_u32 = session->key.sa.as_u32;
+  req->desc.da.as_u32 = session->key.da.as_u32;
+  req->desc.sp = session->key.sp;
+  req->desc.dp = session->key.dp;
+  req->desc.proto = session->key.proto;
+  req->desc.vni = fib_index;
 
   len += sizeof (hanat_option_session_request_t);
 
   ip->length = htons(len);
   ip->checksum = ip4_header_checksum (ip);
   udp->length = htons (len - sizeof(ip4_header_t));
+
+  b->current_length = len;
 
   /* Add to frame */
   vlib_frame_t *f;
@@ -186,8 +194,8 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, hanat_pool_entry_t *
   f->n_vectors = 1;
   vlib_put_frame_to_node (vm, hm->ip4_lookup_node_index, f);
       
-  //vlib_node_increment_counter (vm, flowprobe_l2_node.index,
-  //FLOWPROBE_ERROR_EXPORTED_PACKETS, 1);
+  vlib_node_increment_counter (vm, hanat_worker_slow_output_node.index,
+			       HANAT_WORKER_SLOW_MAPPER_REQUEST, 1);
   return 0;
 }
 
@@ -217,11 +225,9 @@ hanat_worker_slow_output (vlib_main_t * vm,
 
 	  /* speculatively enqueue b0 to the current next frame */
 	  bi0 = from[0];
-	  to_next[0] = bi0;
+
 	  from += 1;
-	  to_next += 1;
 	  n_left_from -= 1;
-	  n_left_to_next -= 1;
 
 	  b0 = vlib_get_buffer (vm, bi0);
 
@@ -236,17 +242,20 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  if (pe) {
 	    clib_warning("Found mapper %U", format_ip46_address, &pe->mapper);
 
-	    hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
-	    send_hanat_protocol_request(vm, bi0, pe);
+	    hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
+	    send_hanat_protocol_request(vm, fib_index0, b0, pe, s);
 
 	  } else {
+	    clib_warning("Dropping packet");
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
 	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			       && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
 	      hanat_worker_slow_trace_t *t =
 		vlib_add_trace (vm, node, b0, sizeof (*t));
 	    }
-
+	    to_next[0] = bi0;
+	    to_next += 1;
+	    n_left_to_next -= 1;
 	    /* verify speculative enqueue, maybe switch current next frame */
 	    vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					     to_next, n_left_to_next,

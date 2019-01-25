@@ -46,7 +46,7 @@ typedef vl_api_hanat_instructions_t hanat_instructions_t;
  */
 typedef struct {
   u32 core_id;
-} hanat_header_t;
+} __attribute__((packed)) hanat_header_t;
 
 /*
  * TLV Types
@@ -64,7 +64,7 @@ typedef struct {
   u32 proto:8, vni:24;
   u16 sp;
   u16 dp;
-} hanat_session_descriptor_t;
+} __attribute__((packed)) hanat_session_descriptor_t;
 
 /*
  * Session request / reply
@@ -76,7 +76,7 @@ typedef struct {
   u32 pool_id;
   hanat_session_descriptor_t desc;
   u8 opaque_data[0];
-} hanat_option_session_request_t;
+} __attribute__((packed)) hanat_option_session_request_t;
 
 typedef struct {
   u8 type;		/* Session reply */

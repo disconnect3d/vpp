@@ -118,7 +118,7 @@ hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry
   return s;
 }
 
-void
+hanat_session_t *
 hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi)
 {
   hanat_session_key_t key;
@@ -131,7 +131,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   if (s) {
     /* Just buffer packet */
     vec_add1(s->entry.buffer_vec, bi);
-    return;
+    return s;
   }
 
   /* Add session to pool */
@@ -147,6 +147,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   kv.value = s - db->sessions;
   if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, 0))
     assert(0);
+  return s;
 }
 
 void

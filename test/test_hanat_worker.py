@@ -3,12 +3,13 @@
 
 import unittest
 from scapy.layers.inet import Ether, IP, UDP, TCP
-from scapy.all import fragment, RandShort
+from scapy.all import fragment, RandShort, bind_layers, Packet
 from framework import VppTestCase, VppTestRunner
 from vpp_ip import DpoProto
 from vpp_ip_route import VppIpRoute, VppRoutePath, VppIpTable
 from util import reassemble4
 from vpp_papi import VppEnum
+from hanat import *
 
 class TestHANAT(VppTestCase):
     """ HANAT Worker Test Case """
@@ -52,8 +53,8 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
                                                         fib_index=0,
                                                         pool='130.67.1.0/24',
-                                                        src='2.2.2.2',
-                                                        mapper='1.2.3.5',
+                                                        src=self.pg1.remote_ip4,
+                                                        mapper=self.pg1.local_ip4,
                                                         udp_port=1234)
 
         print('RV', rv)
@@ -72,7 +73,7 @@ class TestHANAT(VppTestCase):
                            [VppRoutePath(self.pg1.remote_ip4,
                                          self.pg1.sw_if_index)])
 
-        route.add_vpp_config()
+        #route.add_vpp_config()
 
         key = {'sa': self.pg0.remote_ip4,
                'da': '8.8.8.8',
@@ -89,6 +90,7 @@ class TestHANAT(VppTestCase):
                                                    post_dp=5555)
         self.assertEqual(rv.retval, 0)
 
+        '''
         # Send a v4 TCP SYN packet (cache hit)
         p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
         p_ip4 = IP(src=self.pg0.remote_ip4, dst='8.8.8.8') / TCP(sport=1234, dport=80, flags="S")
@@ -97,15 +99,22 @@ class TestHANAT(VppTestCase):
         rx = self.send_and_expect(self.pg0, p4*1, self.pg1)
         for p in rx:
             self.validate(p[1], p_ip4_reply)
-
+        '''
         # Send a v4 TCP SYN packet (cache miss)
-        p4[IP].dst = '8.8.8.9'
+        p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
+        p_ip4 = IP(src=self.pg0.remote_ip4, dst='8.8.8.9') / TCP(sport=1234, dport=80, flags="S")
+        p4 = (p_ether / p_ip4)
+        p_ip4_reply = IP(src='1.1.1.1', dst='8.8.8.8', ttl=63) / TCP(sport=4002, dport=5555, flags="S")
         rx = self.send_and_expect(self.pg0, p4*1, self.pg1)
         for p in rx:
             p.show2()
             #self.validate(p[1], p_ip4_reply)
 
-
+        p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
+        p_ip4 = IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) / UDP(sport=1234, dport=1234) / HANAT() / HANATSessionReply()
+        p4 = (p_ether / p_ip4)
+        p4.show2()
+        self.send_and_assert_no_replies(self.pg0, p4 * 1)
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)
