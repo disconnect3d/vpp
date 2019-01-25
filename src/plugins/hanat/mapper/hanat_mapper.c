@@ -223,12 +223,13 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
       for (i = 0; i < count; i++)
 	{
 	  vec_add2 (pool->addresses, address, 1);
+	  address->addr.as_u32 = this_addr.as_u32;
+	  increment_v4_address (&this_addr);
 #define _(N, id, n, s) \
       clib_bitmap_alloc (address->busy_##n##_port_bitmap, 65535); \
       address->busy_##n##_ports = 0;
 	  foreach_hanat_mapper_protocol
 #undef _
-	    increment_v4_address (&this_addr);
 	}
     }
   else
@@ -262,6 +263,17 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 {
   hanat_mapper_main_t *nm = &hanat_mapper_main;
   hanat_mapper_mapping_t *mapping;
+  hanat_mapper_addr_pool_t *pool;
+  hanat_mapper_address_t *address;
+  int i;
+  u16 port_host_byte_order = clib_net_to_host_u16 (external_port);
+
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    {
+      clib_warning ("pool_id %d not found", pool_id);
+      return VNET_API_ERROR_UNSPECIFIED;
+    }
 
   mapping =
     hanat_mapper_mapping_get (&nm->db, local_addr, local_port, protocol,
@@ -271,6 +283,28 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
     {
       if (mapping)
 	return VNET_API_ERROR_VALUE_EXIST;
+
+      for (i = 0; i < vec_len (pool->addresses); i++)
+	{
+	  address = pool->addresses + i;
+
+	  switch (protocol)
+	    {
+#define _(N, id, n, s) \
+        case HANAT_MAPPER_PROTOCOL_##N: \
+          if (clib_bitmap_get_no_check (address->busy_##n##_port_bitmap, port_host_byte_order)) \
+            return VNET_API_ERROR_INSTANCE_IN_USE; \
+          clib_bitmap_set_no_check (address->busy_##n##_port_bitmap, port_host_byte_order, 1); \
+          if (port_host_byte_order > 1024) \
+            address->busy_##n##_ports++; \
+          break;
+	      foreach_hanat_mapper_protocol
+#undef _
+	    default:
+	      clib_warning ("unknown protocol");
+	      return VNET_API_ERROR_INVALID_VALUE;
+	    }
+	}
 
       mapping =
 	hanat_mapper_mappig_create (&nm->db, local_addr, local_port,
@@ -284,6 +318,8 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
       if (!mapping)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
+      hanat_mapper_free_out_addr_and_port (pool_id, protocol, external_addr,
+					   external_port);
       hanat_mapper_mapping_free (&nm->db, mapping, 1);
     }
 
