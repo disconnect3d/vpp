@@ -64,6 +64,10 @@ class TestHANATmapper(VppTestCase):
             raise
 
     def test_hanat_state_sync_recv(self):
+        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
+                                                          pool_id=2,
+                                                          is_add=True)
+
         self.vapi.hanat_mapper_set_state_sync(self.pg0.local_ip4n,
                                               self.local_sync_port,
                                               self.pg0.remote_ip4n,
