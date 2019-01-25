@@ -123,6 +123,7 @@ define hanat_mapper_user_session_details {
   u16 out_l_port;
   u16 out_r_port;
   u32 tenant_id;
+  u32 pool_id;
   u8 protocol;
 };
 

@@ -321,6 +321,7 @@ send_hanat_mapper_user_session_details (hanat_mapper_session_t * session,
   rmp->out_r_port = session->out_r_port;
   rmp->protocol = session->proto;
   rmp->tenant_id = clib_host_to_net_u32 (mapping->tenant_id);
+  rmp->pool_id = clib_host_to_net_u32 (mapping->pool_id);
   rmp->context = context;
 
   vl_api_send_msg (reg, (u8 *) rmp);
