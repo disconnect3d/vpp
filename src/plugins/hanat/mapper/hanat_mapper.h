@@ -114,6 +114,14 @@ int hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 					 u8 protocol, u32 tenant_id,
 					 u32 pool_id, u8 is_add);
 
+int hanat_mapper_set_out_addr_and_port (u32 pool_id,
+					hanat_mapper_protocol_t proto,
+					ip4_address_t * addr, u16 port);
+
+void hanat_mapper_free_out_addr_and_port (u32 pool_id,
+					  hanat_mapper_protocol_t proto,
+					  ip4_address_t * addr, u16 port);
+
 format_function_t format_hanat_mapper_protocol;
 
 always_inline u8

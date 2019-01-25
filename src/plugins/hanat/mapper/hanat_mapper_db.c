@@ -305,6 +305,8 @@ hanat_mapper_mapping_free (hanat_mapper_db_t * db,
 	}
     }
 
+  hanat_mapper_free_out_addr_and_port (mapping->pool_id, mapping->proto,
+				       &mapping->out_addr, mapping->out_port);
   pool_put (db->mappings, mapping);
 }
 
