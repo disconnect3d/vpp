@@ -114,11 +114,11 @@ hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry)
 }
 
 int
-hanat_worker_mapper_add_del(bool is_add, u32 fib_index, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
+hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 			    ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  hanat_pool_key_t key = { .as_u32[0] = fib_index,
+  hanat_pool_key_t key = { .as_u32[0] = pool_id,
 			   .as_u32[1] = prefix->as_u32 };
   hanat_pool_entry_t *poolentry;
   u32 mi = hanat_lpm_64_lookup (&hm->pool_db, &key, prefix_len);
@@ -127,8 +127,7 @@ hanat_worker_mapper_add_del(bool is_add, u32 fib_index, u32 pool_id, ip4_address
     pool_get_zero (hm->pool_db.pools, poolentry);
     *mapper_index = poolentry - hm->pool_db.pools;
 
-    poolentry->fib_index = fib_index;
-    poolentry->fib_index = pool_id;
+    poolentry->pool_id = pool_id;
     poolentry->prefix = *prefix;
     poolentry->prefix_len = prefix_len;
     poolentry->src = *src;

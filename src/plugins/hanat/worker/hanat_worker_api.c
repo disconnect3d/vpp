@@ -94,7 +94,7 @@ vl_api_hanat_worker_mapper_add_del_t_handler(vl_api_hanat_worker_mapper_add_del_
   ip_address_decode (&mp->src, &src);
   ip_address_decode (&mp->mapper, &mapper);
   rv = hanat_worker_mapper_add_del(mp->is_add,
-				   ntohl(mp->fib_index), ntohl(mp->pool_id),
+				   ntohl(mp->pool_id),
 				   (ip4_address_t *)&mp->pool.prefix, mp->pool.len,
 				   &src, &mapper, ntohs(mp->udp_port), &mapper_index);
 
