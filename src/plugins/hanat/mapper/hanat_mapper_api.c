@@ -179,6 +179,7 @@ static void
     hanat_mapper_add_del_static_mapping (&l_addr, &e_addr, mp->local_port,
 					 mp->external_port, proto,
 					 clib_net_to_host_u32 (mp->tenant_id),
+					 clib_net_to_host_u32 (mp->pool_id),
 					 mp->is_add);
 
   REPLY_MACRO (VL_API_HANAT_MAPPER_ADD_DEL_STATIC_MAPPING_REPLY);
@@ -201,6 +202,7 @@ static void *vl_api_hanat_mapper_add_del_static_mapping_t_print
     format (s, "external_port %d ", clib_net_to_host_u16 (mp->external_port));
   s = format (s, "protocol %d ", mp->protocol);
   s = format (s, "tenant_id %d", clib_net_to_host_u32 (mp->tenant_id));
+  s = format (s, "pool_id %d", clib_net_to_host_u32 (mp->pool_id));
 
   FINISH;
 }

@@ -28,6 +28,123 @@ VLIB_PLUGIN_REGISTER () = {
 };
 /* *INDENT-ON* */
 
+static inline hanat_mapper_addr_pool_t *
+get_pool_by_pool_id (u32 pool_id)
+{
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  hanat_mapper_addr_pool_t *pool;
+  uword *p = hash_get (nm->pool_index_by_pool_id, pool_id);
+  if (!p)
+    return 0;
+
+  pool = pool_elt_at_index (nm->ext_addr_pool, p[0]);
+  return pool;
+}
+
+static_always_inline u16
+random_port (u16 min, u16 max)
+{
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+
+  return min +
+    random_u32 (&nm->random_seed) / (random_u32_max () / (max - min + 1) + 1);
+}
+
+static int
+hanat_mapper_alloc_out_addr_and_port_default (u32 pool_id,
+					      hanat_mapper_protocol_t proto,
+					      ip4_address_t * addr,
+					      u16 * port)
+{
+  hanat_mapper_addr_pool_t *pool;
+  hanat_mapper_address_t *address;
+  u16 port_num;
+  int i;
+
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    {
+      clib_warning ("pool_id %d not found", pool_id);
+      return 1;
+    }
+
+  for (i = 0; i < vec_len (pool->addresses); i++)
+    {
+      address = pool->addresses + i;
+
+      switch (proto)
+	{
+#define _(N, id, n, s) \
+        case HANAT_MAPPER_PROTOCOL_##N: \
+          if (address->busy_##n##_ports < (65535 - 1024)) \
+            { \
+              while (1) \
+                { \
+                  port_num = random_port (1024, 65535); \
+                  if (clib_bitmap_get_no_check (address->busy_##n##_port_bitmap, port_num)) \
+                    continue; \
+                  clib_bitmap_set_no_check (address->busy_##n##_port_bitmap, port_num, 1); \
+                  address->busy_##n##_ports++; \
+                  *port = clib_host_to_net_u16(port_num); \
+                  addr->as_u32 = address->addr.as_u32; \
+                  return 0; \
+                } \
+            } \
+          break;
+	  foreach_hanat_mapper_protocol
+#undef _
+	default:
+	  clib_warning ("unknown protocol");
+	  return 1;
+	}
+    }
+
+  clib_warning ("addresses exhausted pool-id %d", pool_id);
+  return 1;
+}
+
+void
+hanat_mapper_free_out_addr_and_port (u32 pool_id,
+				     hanat_mapper_protocol_t proto,
+				     ip4_address_t * addr, u16 port)
+{
+  hanat_mapper_addr_pool_t *pool;
+  hanat_mapper_address_t *address;
+  u16 port_host_byte_order = clib_net_to_host_u16 (port);
+  int i;
+
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    {
+      clib_warning ("pool_id %d not found", pool_id);
+      return;
+    }
+
+  for (i = 0; i < vec_len (pool->addresses); i++)
+    {
+      address = pool->addresses + i;
+      if (addr->as_u32 != address->addr.as_u32)
+	continue;
+
+      switch (proto)
+	{
+#define _(N, id, n, s) \
+        case HANAT_MAPPER_PROTOCOL_##N: \
+          ASSERT (clib_bitmap_get_no_check (address->busy_##n##_port_bitmap, \
+            port_host_byte_order) == 1); \
+          clib_bitmap_set_no_check (address->busy_##n##_port_bitmap, \
+            port_host_byte_order, 0); \
+          address->busy_##n##_ports--; \
+          break;
+	  foreach_hanat_mapper_protocol
+#undef _
+	default:
+	  clib_warning ("unknown protocol");
+	  return;
+	}
+    }
+}
+
 static clib_error_t *
 hanat_mapper_init (vlib_main_t * vm)
 {
@@ -40,6 +157,8 @@ hanat_mapper_init (vlib_main_t * vm)
   nm->tcp_transitory_timeout = HANAT_MAPPER_TCP_TRANSITORY_TIMEOUT;
   nm->icmp_timeout = HANAT_MAPPER_ICMP_TIMEOUT;
   nm->pool_index_by_pool_id = hash_create (0, sizeof (uword));
+  nm->alloc_addr_and_port = hanat_mapper_alloc_out_addr_and_port_default;
+  nm->random_seed = random_default_seed ();
 
   nm->vlib_main = vm;
   nm->vnet_main = vnet_get_main ();
@@ -73,19 +192,6 @@ increment_v4_address (ip4_address_t * a)
 
   v = clib_net_to_host_u32 (a->as_u32) + 1;
   a->as_u32 = clib_host_to_net_u32 (v);
-}
-
-static inline hanat_mapper_addr_pool_t *
-get_pool_by_pool_id (u32 pool_id)
-{
-  hanat_mapper_main_t *nm = &hanat_mapper_main;
-  hanat_mapper_addr_pool_t *pool;
-  uword *p = hash_get (nm->pool_index_by_pool_id, pool_id);
-  if (!p)
-    return 0;
-
-  pool = pool_elt_at_index (nm->ext_addr_pool, p[0]);
-  return pool;
 }
 
 int
@@ -151,7 +257,8 @@ int
 hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 				     ip4_address_t * external_addr,
 				     u16 local_port, u16 external_port,
-				     u8 protocol, u32 tenant_id, u8 is_add)
+				     u8 protocol, u32 tenant_id, u32 pool_id,
+				     u8 is_add)
 {
   hanat_mapper_main_t *nm = &hanat_mapper_main;
   hanat_mapper_mapping_t *mapping;
@@ -168,7 +275,7 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
       mapping =
 	hanat_mapper_mappig_create (&nm->db, local_addr, local_port,
 				    external_addr, external_port, protocol,
-				    tenant_id, 1);
+				    pool_id, tenant_id, 1);
       if (!mapping)
 	return VNET_API_ERROR_UNSPECIFIED;
     }

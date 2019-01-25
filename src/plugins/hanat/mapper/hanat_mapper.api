@@ -78,6 +78,7 @@ autoreply define hanat_mapper_add_del_static_mapping {
   u16 external_port;
   u8 protocol;
   u32 tenant_id;
+  u32 pool_id;
   u8 is_add;
 };
 
