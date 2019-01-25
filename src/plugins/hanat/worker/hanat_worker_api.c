@@ -94,7 +94,7 @@ vl_api_hanat_worker_mapper_add_del_t_handler(vl_api_hanat_worker_mapper_add_del_
   ip_address_decode (&mp->src, &src);
   ip_address_decode (&mp->mapper, &mapper);
   rv = hanat_worker_mapper_add_del(mp->is_add,
-				   ntohl(mp->fib_index),
+				   ntohl(mp->fib_index), ntohl(mp->pool_id),
 				   (ip4_address_t *)&mp->pool.prefix, mp->pool.len,
 				   &src, &mapper, ntohs(mp->udp_port), &mapper_index);
 
@@ -145,6 +145,45 @@ vl_api_hanat_worker_mapper_buckets_t_handler(vl_api_hanat_worker_mapper_buckets_
   REPLY_MACRO (VL_API_HANAT_WORKER_MAPPER_BUCKETS_REPLY);
 }
 
+static void
+send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat_session_t *s)
+{
+  vl_api_hanat_worker_cache_details_t *rmp;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
+  rmp = vl_msg_api_alloc (sizeof (*rmp));
+  clib_memset (rmp, 0, sizeof (*rmp));
+  rmp->_vl_msg_id = ntohs (VL_API_HANAT_WORKER_CACHE_DETAILS + hm->msg_id_base);
+  rmp->context = context;
+  memcpy(&rmp->key.sa, &s->key.sa.as_u32, 4);
+  memcpy(&rmp->key.da, &s->key.da.as_u32, 4);
+  rmp->key.proto = s->key.proto;
+  rmp->key.fib_index = htonl(s->key.fib_index);
+  rmp->instructions = htonl(s->entry.instructions);
+  rmp->post_fib_index = htonl(s->entry.fib_index);
+  memcpy(&rmp->post_sa, &s->entry.post_sa, 4);
+  memcpy(&rmp->post_da, &s->entry.post_da, 4);
+  rmp->post_sp = htons(s->entry.post_sp);
+  rmp->post_dp = htons(s->entry.post_dp);
+  vl_api_send_msg (reg, (u8 *) rmp);
+}
+
+static void
+vl_api_hanat_worker_cache_dump_t_handler (vl_api_hanat_worker_cache_dump_t *mp)
+{
+  vl_api_registration_t *reg;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  // TODO: Add support for multiple workers
+
+  reg = vl_api_client_index_to_registration (mp->client_index);
+  if (!reg)
+    return;
+  hanat_session_t *s;
+  pool_foreach (s, hm->db.sessions,
+  ({
+    send_hanat_worker_cache_details(reg, mp->context, s);
+  }));
+}
 
 /* List of message types that this plugin understands */
 #define foreach_hanat_worker_plugin_api_msg				\
@@ -152,6 +191,7 @@ _(HANAT_WORKER_INTERFACE_ADD_DEL, hanat_worker_interface_add_del)	\
 _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\
 _(HANAT_WORKER_CACHE_ADD, hanat_worker_cache_add)			\
+_(HANAT_WORKER_CACHE_DUMP, hanat_worker_cache_dump)			\
 _(HANAT_WORKER_MAPPER_BUCKETS, hanat_worker_mapper_buckets)
 
 /* Set up the API message handling tables */

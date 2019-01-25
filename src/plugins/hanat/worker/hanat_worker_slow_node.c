@@ -125,8 +125,16 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
   return mid;
 }
 
+static u32
+hanat_get_session_index(hanat_session_t *s)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  return s - hm->db.sessions;
+}
+
 static int
-send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b, hanat_pool_entry_t *pe, hanat_session_t *session)
+send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b,
+			    hanat_pool_entry_t *pe, hanat_session_t *session)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u16 len;
@@ -161,21 +169,21 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   len += sizeof (udp_header_t);
 
   hanat_header_t *hanat = (hanat_header_t *) (udp + 1);
-  hanat->core_id = 0L;
+  hanat->core_id = vlib_get_thread_index();
   len += sizeof (hanat_header_t);
 
   hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
   req->type = HANAT_SESSION_REQUEST;
   req->length = sizeof(hanat_option_session_request_t);
-  req->session_id = 0;
-  req->pool_id = 0;
+  req->session_id = htonl(hanat_get_session_index(session));
+  req->pool_id = htonl(pe->pool_id);
 
   req->desc.sa.as_u32 = session->key.sa.as_u32;
   req->desc.da.as_u32 = session->key.da.as_u32;
   req->desc.sp = session->key.sp;
   req->desc.dp = session->key.dp;
   req->desc.proto = session->key.proto;
-  req->desc.vni = fib_index;
+  req->desc.vni = htonl(fib_index);
 
   len += sizeof (hanat_option_session_request_t);
 
@@ -232,21 +240,15 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  b0 = vlib_get_buffer (vm, bi0);
 
 	  ip0 = (ip4_header_t *) vlib_buffer_get_current (b0);
-	  //u16 plen = ntohs(ip0->length);
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
 	  u32 mid0 = find_mapper(sw_if_index0, fib_index0, ip0);
-	  
 	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
 	  if (pe) {
-	    clib_warning("Found mapper %U", format_ip46_address, &pe->mapper);
-
 	    hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
 	    send_hanat_protocol_request(vm, fib_index0, b0, pe, s);
-
 	  } else {
-	    clib_warning("Dropping packet");
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
 	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			       && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
