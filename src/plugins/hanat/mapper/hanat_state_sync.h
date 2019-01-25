@@ -40,6 +40,7 @@ typedef struct
   u32 out_r_addr;
   u16 out_l_port;
   u16 out_r_port;
+  u32 pool_id;
   u32 tenant_id;
 } hanat_state_sync_event_t;
 

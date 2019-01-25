@@ -26,6 +26,7 @@ typedef struct
   u16 in_port;
   ip4_address_t out_addr;
   u16 out_port;
+  u32 pool_id;
   u32 tenant_id;
   u32 nsessions;
   u8 proto;
@@ -88,6 +89,7 @@ hanat_mapper_mapping_t *hanat_mapper_mappig_create (hanat_mapper_db_t *
 						    u16 in_port,
 						    ip4_address_t * out_addr,
 						    u16 out_port, u8 proto,
+						    u32 pool_id,
 						    u32 tenant_id,
 						    u8 is_static);
 
