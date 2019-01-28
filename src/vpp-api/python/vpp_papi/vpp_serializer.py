@@ -264,7 +264,6 @@ class VLAList_legacy():
             total += size
         return r, total
 
-
 class VPPEnumType(object):
     def __init__(self, name, msgdef):
         self.size = types['u32'].size

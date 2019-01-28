@@ -15,24 +15,25 @@ class _HANATGuessPayload:
 class HANATSessionRequest(_HANATGuessPayload, Packet):
     name = "HANAT Session Request"
     fields_desc = [ ByteField("type", 0),
-                    ByteField("len", 26),
-                    IntField("sessionid", 0),
+                    ByteField("len", 27),
+                    IntField("session_id", 0),
                     IntField("poolid", 0),
                     IPField("src", '0.0.0.0'),
                     IPField("dst", '0.0.0.0'),
                     ByteEnumField("proto", 0, IP_PROTOS),
                     ThreeBytesField("VNI", 0),
                     ShortField("sport", 0),
-                    ShortField("dport", 0),]
+                    ShortField("dport", 0),
+                    ByteField("in2out", 0)]
 
 class HANATSessionBinding(_HANATGuessPayload, Packet):
     name = "HANAT Session Binding"
     fields_desc = [ ByteField("type", 1),
                     ByteField("len", 20),
-                    IntField("sessionid", 0),
-                    FlagsField("instr", 0x1, 32,
-                    ['NO_TRANSLATE', 'SRC', 'SRC_PORT',
-                     'DST', 'DST_PORT', 'TCP_MSS']),
+                    IntField("session_id", 0),
+                    FlagsField("instr", 0, 32,
+                               ['SRC', 'SRC_PORT',
+                                'DST', 'DST_PORT', 'TCP_MSS']),
                     IntField("VNI", 0),
                     IPField("src", '0.0.0.0'),
                     IPField("dst", '0.0.0.0'),

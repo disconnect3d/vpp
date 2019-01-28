@@ -72,11 +72,11 @@ class TestHANAT(VppTestCase):
                                                            mode=mode)
         self.assertEqual(rv.retval, 0)
 
-        route = VppIpRoute(self, "0.0.0.0", 0,
+        route = VppIpRoute(self, "8.0.0.0", 8,
                            [VppRoutePath(self.pg1.remote_ip4,
                                          self.pg1.sw_if_index)])
 
-        #route.add_vpp_config()
+        route.add_vpp_config()
 
         key = {'sa': self.pg0.remote_ip4,
                'da': '8.8.8.8',
@@ -88,11 +88,13 @@ class TestHANAT(VppTestCase):
         #instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS +
         #                VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_PORT +
         #                VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_DESTINATION_PORT)
-        instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS)
 
-        rv = self.vapi.papi.hanat_worker_cache_add(key=key, instructions=instructions, post_sa='1.1.1.1', post_sp=4002,
-                                                   post_dp=5555)
-        self.assertEqual(rv.retval, 0)
+
+        #instructions = (VppEnum.vl_api_hanat_instructions_t.HANAT_INSTR_SOURCE_ADDRESS)
+
+        #rv = self.vapi.papi.hanat_worker_cache_add(key=key, instructions=instructions, post_sa='1.1.1.1', post_sp=4002,
+        #                                           post_dp=5555)
+        #self.assertEqual(rv.retval, 0)
 
         '''
         # Send a v4 TCP SYN packet (cache hit)
@@ -104,6 +106,7 @@ class TestHANAT(VppTestCase):
         for p in rx:
             self.validate(p[1], p_ip4_reply)
         '''
+
         # Send a v4 TCP SYN packet (cache miss)
         p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
         p_ip4 = IP(src=self.pg0.remote_ip4, dst='8.8.8.9') / TCP(sport=1234, dport=80, flags="S")
@@ -112,24 +115,38 @@ class TestHANAT(VppTestCase):
         rx = self.send_and_expect(self.pg0, p4*1, self.pg1)
         for p in rx:
             p.show2()
+            session_id = p[HANATSessionRequest].session_id
             #self.validate(p[1], p_ip4_reply)
 
+        # Send session binding
         p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
-        hb = HANATSessionBinding(src='5.5.5.5', dst='6.6.6.6', sport=11, dport=12, instr='SRC')
+        hb = HANATSessionBinding(src='5.5.5.5', dst='6.6.6.6', sport=11, dport=12, instr='SRC+SRC_PORT', session_id=session_id)
         p_ip4 = IP(src=self.pg1.remote_ip4, dst=self.pg1.local_ip4) / UDP(sport=1234, dport=1234) / HANAT() / hb
         p4 = (p_ether / p_ip4)
-        p4.show2()
-        self.send_and_assert_no_replies(self.pg1, p4 * 1)
-        #for p in rx:
-        #    p.show2()
+        #p4.show2()
+        # Sending the binding back
+        #self.send_and_assert_no_replies(self.pg1, p4 * 1)
+        rx = self.send_and_expect(self.pg1, p4 * 1, self.pg1)
+        for p in rx:
+            p.show2()
 
-        # Send session binding
+        self.logger.info(self.vapi.cli("show ip fib"))
+
+        # Send a v4 TCP SYN packet (cache hit)
+        p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
+        p_ip4 = IP(src=self.pg0.remote_ip4, dst='8.8.8.9') / TCP(sport=1234, dport=80, flags="S")
+        p4 = (p_ether / p_ip4)
+        p_ip4_reply = IP(src='1.1.1.1', dst='8.8.8.8', ttl=63) / TCP(sport=4002, dport=5555, flags="S")
+        rx = self.send_and_expect(self.pg0, p4*1, self.pg1)
+        for p in rx:
+            p.show2()
+
 
 
         # Dump cache
-        rv = self.vapi.papi.hanat_worker_cache_dump()
-        print('RV', rv)
-        self.assertEqual(2, len(rv))
+        #rv = self.vapi.papi.hanat_worker_cache_dump()
+        #print('RV', rv)
+        #self.assertEqual(1, len(rv))
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)

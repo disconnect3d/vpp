@@ -132,6 +132,19 @@ hanat_get_session_index(hanat_session_t *s)
   return s - hm->db.sessions;
 }
 
+static void
+give_to_frame(u32 node_index, u32 bi)
+{
+  vlib_main_t *vm = vlib_get_main();
+  vlib_frame_t *f;
+  u32 *to_next;
+  f = vlib_get_frame_to_node (vm, node_index);
+  to_next = vlib_frame_vector_args (f);
+  to_next[0] = bi;
+  f->n_vectors = 1;
+  vlib_put_frame_to_node (vm, node_index, f);
+}
+
 static int
 send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b,
 			    hanat_pool_entry_t *pe, hanat_session_t *session, bool in2out)
@@ -175,16 +188,17 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
   req->type = HANAT_SESSION_REQUEST;
   req->length = sizeof(hanat_option_session_request_t);
+  clib_warning("SESSION REQUEST %d %d", sizeof(hanat_option_session_request_t), sizeof(hanat_session_descriptor_t));
   req->session_id = htonl(hanat_get_session_index(session));
   req->pool_id = htonl(pe->pool_id);
 
   req->desc.sa.as_u32 = session->key.sa.as_u32;
   req->desc.da.as_u32 = session->key.da.as_u32;
-  req->desc.in2out = in2out;
   req->desc.sp = session->key.sp;
   req->desc.dp = session->key.dp;
   req->desc.proto = session->key.proto;
   req->desc.vni = htonl(fib_index);
+  req->desc.in2out = in2out;
 
   len += sizeof (hanat_option_session_request_t);
 
@@ -195,13 +209,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   b->current_length = len;
 
   /* Add to frame */
-  vlib_frame_t *f;
-  u32 *to_next;
-  f = vlib_get_frame_to_node (vm, hm->ip4_lookup_node_index);
-  to_next = vlib_frame_vector_args (f);
-  to_next[0] = bi;
-  f->n_vectors = 1;
-  vlib_put_frame_to_node (vm, hm->ip4_lookup_node_index, f);
+  give_to_frame(hm->ip4_lookup_node_index, bi);
       
   vlib_node_increment_counter (vm, hanat_worker_slow_output_node.index,
 			       HANAT_WORKER_SLOW_MAPPER_REQUEST, 1);
@@ -348,13 +356,14 @@ hanat_worker_slow_input (vlib_main_t * vm,
 		goto done0;
 	      }
 
-	      /* Update session entry */
-	      s->entry.instructions = ntohl(sp->instructions);
-	      s->entry.fib_index = ntohl(sp->fib_index);
-	      memcpy(&s->entry.post_sa, &sp->sa.as_u32, 4);
-	      memcpy(&s->entry.post_da, &sp->da.as_u32, 4);
-	      s->entry.post_sp = sp->sp; /* Network byte order */
-	      s->entry.post_dp = sp->dp; /* Network byte order */
+	      hanat_worker_cache_update(s, ntohl(sp->instructions), ntohl(sp->fib_index),
+					&sp->sa, &sp->da, sp->sp, sp->dp);
+
+	      /* Put cached packet back to fast worker node */
+	      if (s->entry.buffer) {
+		give_to_frame(hm->hanat_worker_node_index, s->entry.buffer);
+		s->entry.buffer = 0;
+	      }
 	    }
 	    break;
 	  case HANAT_SESSION_DECLINE:

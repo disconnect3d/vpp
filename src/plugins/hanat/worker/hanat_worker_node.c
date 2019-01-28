@@ -170,7 +170,6 @@ hanat_worker (vlib_main_t * vm,
 
 	  ip0 = (ip4_header_t *) ((u8 *) vlib_buffer_get_current (b0));
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
-	  clib_warning("RECEIVED PACKET FROM: %d", sw_if_index0);
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
 
@@ -180,7 +179,7 @@ hanat_worker (vlib_main_t * vm,
 	  u32 out_fib_index0;
 	  if (hanat_nat44_transform(&hm->db, fib_index0, ip0, &out_fib_index0)) {
 	    vnet_feature_next(&next0, b0);
-	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = out_fib_index0;
+	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
 	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
 	    cache_hit++;
 	  } else {
@@ -202,11 +201,12 @@ hanat_worker (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
+#if 0
   vlib_error_count (vm, node->node_index,
 		    HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
   vlib_error_count (vm, node->node_index,
 		    HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
-
+#endif
   return frame->n_vectors;
 }
 

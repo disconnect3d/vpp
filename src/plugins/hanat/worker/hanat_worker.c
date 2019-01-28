@@ -30,12 +30,14 @@ static clib_error_t *
 hanat_worker_init (vlib_main_t * vm)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  vlib_node_t *ip4_lookup_node;
+  vlib_node_t *node;
   clib_memset (hm, 0, sizeof (*hm));
   hanat_db_init(&hm->db, 1024, 2000000);
 
-  ip4_lookup_node = vlib_get_node_by_name (vm, (u8 *) "ip4-lookup");
-  hm->ip4_lookup_node_index = ip4_lookup_node->index;
+  node = vlib_get_node_by_name (vm, (u8 *) "ip4-lookup");
+  hm->ip4_lookup_node_index = node->index;
+  node = vlib_get_node_by_name (vm, (u8 *) "hanat-worker");
+  hm->hanat_worker_node_index = node->index;
 
   hanat_mapper_table_init(&hm->pool_db);
   hm->pool_db.n_buckets = 1024;
@@ -80,39 +82,75 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
 				      sw_if_index, is_add, 0, 0);
 }
 
+/*
+ * Checksum delta
+ */
+static int
+l3_checksum_delta(hanat_instructions_t instructions,
+		  ip4_address_t pre_sa, ip4_address_t post_sa,
+		  ip4_address_t pre_da, ip4_address_t post_da)
+{
+  ip_csum_t c = 0;
+  if (instructions & HANAT_INSTR_SOURCE_ADDRESS) {
+    c = ip_csum_add_even(c, post_sa.as_u32);
+    c = ip_csum_sub_even(c, pre_sa.as_u32);
+  }
+  if (instructions & HANAT_INSTR_DESTINATION_ADDRESS) {
+    c = ip_csum_sub_even(c, pre_da.as_u32);
+    c = ip_csum_add_even(c, post_da.as_u32);
+  }
+  return c;
+}
+
+static int
+l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
+		   u16 pre_sp, u16 post_sp, u16 pre_dp, u16 post_dp)
+{
+  if (instructions & HANAT_INSTR_SOURCE_PORT) {
+    c = ip_csum_add_even(c, post_sp);
+    c = ip_csum_sub_even(c, pre_sp);
+  }
+  if (instructions & HANAT_INSTR_DESTINATION_PORT) {
+    c = ip_csum_add_even(c, post_dp);
+    c = ip_csum_sub_even(c, pre_dp);
+  }
+  return c;
+}
+
 int
 hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  ip_csum_t c = 0;
 
-  /*
-   * Checksum delta
-   */
-  if (entry->instructions & HANAT_INSTR_SOURCE_ADDRESS) {
-    c = ip_csum_add_even(c, entry->post_sa.as_u32);
-    c = ip_csum_sub_even(c, key->sa.as_u32);
-  }
-  if (entry->instructions & HANAT_INSTR_DESTINATION_ADDRESS) {
-    c = ip_csum_sub_even(c, key->sa.as_u32);
-    c = ip_csum_add_even(c, entry->post_sa.as_u32);
-  }
-  ip_csum_t l4_c = c;
-  if (entry->instructions & HANAT_INSTR_SOURCE_PORT) {
-    l4_c = ip_csum_add_even(l4_c, entry->post_sp);
-    l4_c = ip_csum_sub_even(l4_c, key->sp);
-  }
-  if (entry->instructions & HANAT_INSTR_DESTINATION_PORT) {
-    l4_c = ip_csum_add_even(l4_c, entry->post_dp);
-    l4_c = ip_csum_sub_even(l4_c, key->dp);
-  }
+  ip_csum_t c = l3_checksum_delta(entry->instructions, key->sa, entry->post_sa, key->da, entry->post_da);
+  entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
   entry->checksum = c;
-  entry->l4_checksum = l4_c;
 
   hanat_session_t *s = hanat_session_add(&hm->db, key, entry);
   if (!s)
     return -1;
   return 0;
+}
+
+void
+hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
+			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
+			  u16 sport, u16 dport)
+{
+  /* Update session entry */
+  hanat_session_key_t *key = &s->key;
+  hanat_session_entry_t *entry = &s->entry;
+  entry->instructions = instructions;
+  entry->fib_index = fib_index;
+  memcpy(&entry->post_sa, &sa->as_u32, 4);
+  memcpy(&entry->post_da, &da->as_u32, 4);
+  entry->post_sp = sport; /* Network byte order */
+  entry->post_dp = dport; /* Network byte order */
+
+  ip_csum_t c = l3_checksum_delta(instructions, key->sa, entry->post_sa, key->da, entry->post_da);
+  entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
+  entry->checksum = c;
+
 }
 
 int

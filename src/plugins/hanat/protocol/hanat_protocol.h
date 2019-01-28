@@ -62,10 +62,10 @@ typedef struct {
 typedef struct {
   ip4_address_t sa;
   ip4_address_t da;
-  u32 proto:8, vni:24;
-  bool in2out; /* true if in2out, false if out2in */
+  u32 proto:8, vni:23;
   u16 sp;
   u16 dp;
+  bool in2out;
 } __attribute__((packed)) hanat_session_descriptor_t;
 
 /*

@@ -60,7 +60,7 @@ typedef struct {
   ip_csum_t l4_checksum;
   u16 tcp_mss;
   //  vlib_combined_counter_t counter;
-  u32 *buffer_vec;
+  u32 buffer;
 } hanat_session_entry_t;
 
 typedef struct {
@@ -121,6 +121,7 @@ typedef struct {
   u32 *interface_by_sw_if_index;
 
   u32 ip4_lookup_node_index;
+  u32 hanat_worker_node_index;
 
   /* API message ID base */
   u16 msg_id_base;
@@ -138,6 +139,10 @@ hanat_session_t *hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_heade
 int hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode);
 clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
+void hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
+			       u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
+			       u16 sport, u16 dport);
+
 hanat_session_t *hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi);
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);

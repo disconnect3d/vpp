@@ -122,7 +122,6 @@ hanat_session_t *
 hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi)
 {
   hanat_session_key_t key;
-  hanat_session_entry_t e = {0};
   hanat_session_t *s;
 
   hanat_key_from_ip(fib_index, ip, &key);
@@ -131,15 +130,17 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   if (s) {
     /* Just buffer packet */
     // TODO: Only buffer a maximum of n packets
-    vec_add1(s->entry.buffer_vec, bi);
+    clib_warning("Buffer exists");
+    //vec_add1(*s->entry.buffer_vec, bi);
+    s->entry.buffer = bi;
     return s;
   }
 
   /* Add session to pool */
   pool_get_zero(db->sessions, s);
   s->key = key;
-  vec_add1(s->entry.buffer_vec, bi);
-  s->entry = e;
+  //vec_add1(*s->entry.buffer_vec, bi);
+  s->entry.buffer = bi;
 
   /* Add to index */
   clib_bihash_kv_16_8_t kv;

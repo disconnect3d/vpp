@@ -87,7 +87,6 @@ autoreply define hanat_worker_mapper_buckets {
  * Worker cache table
  */
 enum hanat_instructions {
-  HANAT_INSTR_NO_TRANSLATE           = 0x00,
   HANAT_INSTR_SOURCE_ADDRESS         = 0x01,
   HANAT_INSTR_SOURCE_PORT            = 0x02,
   HANAT_INSTR_DESTINATION_ADDRESS    = 0x04,
