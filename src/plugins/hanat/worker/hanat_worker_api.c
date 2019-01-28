@@ -49,6 +49,17 @@
 #undef vl_api_version
 
 static void
+vl_api_hanat_worker_enable_t_handler(vl_api_hanat_worker_enable_t *mp)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  vl_api_hanat_worker_enable_reply_t *rmp;
+  int rv = 0;
+
+  rv = hanat_worker_enable(ntohs(mp->udp_port));
+  REPLY_MACRO (VL_API_HANAT_WORKER_ENABLE_REPLY);
+}
+
+static void
 vl_api_hanat_worker_interface_add_del_t_handler(vl_api_hanat_worker_interface_add_del_t *mp)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
@@ -187,6 +198,7 @@ vl_api_hanat_worker_cache_dump_t_handler (vl_api_hanat_worker_cache_dump_t *mp)
 
 /* List of message types that this plugin understands */
 #define foreach_hanat_worker_plugin_api_msg				\
+_(HANAT_WORKER_ENABLE, hanat_worker_enable)				\
 _(HANAT_WORKER_INTERFACE_ADD_DEL, hanat_worker_interface_add_del)	\
 _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\

@@ -40,9 +40,12 @@ class TestHANAT(VppTestCase):
     def test_hanat(self):
         """ hanat_worker basic test """
 
+        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234)
+        self.assertEqual(rv.retval, 0)
+
         # Configure the mapper for a pool
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
-                                                        fib_index=0,
+                                                        pool_id=0,
                                                         pool='130.67.0.0/24',
                                                         src='1.1.1.1',
                                                         mapper='1.2.3.4',
@@ -51,7 +54,7 @@ class TestHANAT(VppTestCase):
 
         print('RV', rv)
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
-                                                        fib_index=0,
+                                                        pool_id=0,
                                                         pool='130.67.1.0/24',
                                                         src=self.pg1.remote_ip4,
                                                         mapper=self.pg1.local_ip4,
@@ -112,12 +115,13 @@ class TestHANAT(VppTestCase):
             #self.validate(p[1], p_ip4_reply)
 
         p_ether = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
-        p_ip4 = IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) / UDP(sport=1234, dport=1234) / HANAT() / HANATSessionReply()
+        hb = HANATSessionBinding(src='5.5.5.5', dst='6.6.6.6', sport=11, dport=12, instr='SRC')
+        p_ip4 = IP(src=self.pg1.remote_ip4, dst=self.pg1.local_ip4) / UDP(sport=1234, dport=1234) / HANAT() / hb
         p4 = (p_ether / p_ip4)
         p4.show2()
-        rx = self.send_and_expect(self.pg0, p4 * 1, self.pg1)
-        for p in rx:
-            p.show2()
+        self.send_and_assert_no_replies(self.pg1, p4 * 1)
+        #for p in rx:
+        #    p.show2()
 
         # Send session binding
 
@@ -125,7 +129,7 @@ class TestHANAT(VppTestCase):
         # Dump cache
         rv = self.vapi.papi.hanat_worker_cache_dump()
         print('RV', rv)
-
+        self.assertEqual(2, len(rv))
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)

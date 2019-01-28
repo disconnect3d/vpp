@@ -18,9 +18,13 @@
 #include <arpa/inet.h>
 #include <vnet/fib/fib_table.h>
 #include <vppinfra/pool.h>
+#include <vnet/udp/udp_packet.h>
+#include <vnet/udp/udp.h>
+
 #include "hanat_worker_db.h"
 
 hanat_worker_main_t hanat_worker_main;
+extern vlib_node_registration_t hanat_worker_slow_input_node;
 
 static clib_error_t *
 hanat_worker_init (vlib_main_t * vm)
@@ -35,8 +39,6 @@ hanat_worker_init (vlib_main_t * vm)
 
   hanat_mapper_table_init(&hm->pool_db);
   hm->pool_db.n_buckets = 1024;
-
-  hanat_worker_slow_init(vm);
 
   /* Init API */
   return hanat_worker_api_init(vm, hm);
@@ -73,7 +75,7 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
     pool_put (hm->interfaces, interface);
     hm->interface_by_sw_if_index[sw_if_index] = ~0;
   }
-
+  clib_warning("ADDING HANAT WORKER TO %d", sw_if_index);
   return vnet_feature_enable_disable ("ip4-unicast", "hanat-worker",
 				      sw_if_index, is_add, 0, 0);
 }
@@ -165,6 +167,15 @@ hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[])
   }
 
   hm->pool_db.lb_buckets[fib_index] = b;
+
+  return 0;
+}
+
+int
+hanat_worker_enable(u16 udp_port)
+{
+  vlib_main_t * vm = vlib_get_main();
+  udp_register_dst_port (vm, udp_port, hanat_worker_slow_input_node.index, 1 /*is_ip4 */);
 
   return 0;
 }

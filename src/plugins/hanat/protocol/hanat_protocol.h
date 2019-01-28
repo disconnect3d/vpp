@@ -63,6 +63,7 @@ typedef struct {
   ip4_address_t sa;
   ip4_address_t da;
   u32 proto:8, vni:24;
+  bool in2out; /* true if in2out, false if out2in */
   u16 sp;
   u16 dp;
 } __attribute__((packed)) hanat_session_descriptor_t;
@@ -85,6 +86,7 @@ typedef struct {
   u32 session_id;
   hanat_instructions_t instructions;
   /* Translated data fields */
+  u32 fib_index;
   ip4_address_t sa;
   ip4_address_t da;
   u16 sp;
@@ -100,7 +102,7 @@ typedef struct {
 }  __attribute__((packed)) hanat_option_session_decline_t;
 
 /*
- * Session update
+ * Session refresh
  */
 typedef enum {
   HANAT_FLAGS_UPDATE     = 0x0,	      
