@@ -23,8 +23,6 @@
 #include <vnet/ip/ip6_packet.h>
 #include "../protocol/hanat_protocol.h"
 
-#define HANAT_WORKER_UDP_PORT		1234
-
 typedef unsigned int u32;
 
 /* NAT 6-tuple key. 16 octets */
@@ -144,11 +142,11 @@ hanat_session_t *hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[]);
+int hanat_worker_enable(u16 udp_port);
 
 void hanat_mapper_table_init(hanat_pool_t *db);
 void hanat_lpm_64_add (hanat_pool_t *lpm, void *addr_v, u8 pfxlen, u32 value);
 void hanat_lpm_64_delete (hanat_pool_t *lpm, void *addr_v, u8 pfxlen);
 u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, void *addr_v, u8 pfxlen);
-void hanat_worker_slow_init (vlib_main_t *vm);
 
 #endif

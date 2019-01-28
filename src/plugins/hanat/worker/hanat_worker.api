@@ -28,6 +28,9 @@ enum hanat_worker_if_mode {
   HANAT_WORKER_IF_DUAL,
 };
 
+/*
+ * Enable NAT worker on an interface
+ */
 autoreply define hanat_worker_interface_add_del {
   u32 client_index;
   u32 context;
@@ -36,6 +39,9 @@ autoreply define hanat_worker_interface_add_del {
   vl_api_hanat_worker_if_mode_t mode;
 };
 
+/*
+ * List NAT enabled interfaces
+ */
 define hanat_worker_interfaces {
   u32 client_index;
   u32 context;
@@ -48,7 +54,7 @@ define hanat_worker_interfaces_reply {
 };
 
 /*
- * Mapper list
+ * Add new mapper
  */
 define hanat_worker_mapper_add_del {
   u32 client_index;
@@ -110,6 +116,9 @@ autoreply define hanat_worker_cache_add {
   u16 post_dp;
 };
 
+/*
+ * Dump worker session cache
+ */
 define hanat_worker_cache_dump {
   u32 client_index;
   u32 context;
@@ -124,4 +133,13 @@ define hanat_worker_cache_details {
   vl_api_ip4_address_t post_da;
   u16 post_sp;
   u16 post_dp;
+};
+
+/*
+ * Enable worker
+ */
+autoreply define hanat_worker_enable {
+  u32 client_index;
+  u32 context;
+  u16 udp_port;
 };

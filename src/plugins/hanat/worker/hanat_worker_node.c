@@ -170,6 +170,7 @@ hanat_worker (vlib_main_t * vm,
 
 	  ip0 = (ip4_header_t *) ((u8 *) vlib_buffer_get_current (b0));
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
+	  clib_warning("RECEIVED PACKET FROM: %d", sw_if_index0);
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
 

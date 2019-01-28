@@ -44,7 +44,6 @@ typedef enum {
 
 
 #define foreach_hanat_worker_slow_input_next	\
-  _(HANAT_CACHE, "hanat-worker")			\
   _(DROP, "error-drop")
 
 typedef enum {
@@ -102,11 +101,10 @@ get_interface_mode(u32 sw_if_index)
 }
 
 static u32
-find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
+find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, bool *in2out)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 mid = ~0;
-
   vl_api_hanat_worker_if_mode_t mode = get_interface_mode(sw_if_index);
 
   if (mode == HANAT_WORKER_IF_OUTSIDE ||
@@ -114,12 +112,14 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip)
     hanat_pool_key_t key = { .as_u32[0] = fib_index,
 			     .as_u32[1] = ip->dst_address.as_u32 };
     mid = hanat_lpm_64_lookup (&hm->pool_db, &key, 32);
+    *in2out = false;
   }
   if (mode == HANAT_WORKER_IF_INSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
     if (mid == ~0) {
       u32 i = ip->src_address.as_u32 % hm->pool_db.n_buckets;
       mid = hm->pool_db.lb_buckets[fib_index][i];
+      *in2out = true;
     }
   }
   return mid;
@@ -134,7 +134,7 @@ hanat_get_session_index(hanat_session_t *s)
 
 static int
 send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b,
-			    hanat_pool_entry_t *pe, hanat_session_t *session)
+			    hanat_pool_entry_t *pe, hanat_session_t *session, bool in2out)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u16 len;
@@ -180,6 +180,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
 
   req->desc.sa.as_u32 = session->key.sa.as_u32;
   req->desc.da.as_u32 = session->key.da.as_u32;
+  req->desc.in2out = in2out;
   req->desc.sp = session->key.sp;
   req->desc.dp = session->key.dp;
   req->desc.proto = session->key.proto;
@@ -230,6 +231,7 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  vlib_buffer_t *b0;
 	  u32 next0, sw_if_index0, fib_index0;
 	  ip4_header_t *ip0;
+	  bool in2out;
 
 	  /* speculatively enqueue b0 to the current next frame */
 	  bi0 = from[0];
@@ -243,11 +245,11 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
-	  u32 mid0 = find_mapper(sw_if_index0, fib_index0, ip0);
+	  u32 mid0 = find_mapper(sw_if_index0, fib_index0, ip0, &in2out);
 	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
 	  if (pe) {
 	    hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
-	    send_hanat_protocol_request(vm, fib_index0, b0, pe, s);
+	    send_hanat_protocol_request(vm, fib_index0, b0, pe, s, in2out);
 	  } else {
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
 	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
@@ -281,7 +283,108 @@ hanat_worker_slow_input (vlib_main_t * vm,
 			 vlib_node_runtime_t * node,
 			 vlib_frame_t * frame)
 {
-  return 0;
+  u32 n_left_from, *from, *to_next;
+  hanat_worker_slow_input_next_t next_index;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
+  from = vlib_frame_vector_args (frame);
+  n_left_from = frame->n_vectors;
+  next_index = node->cached_next_index;
+
+  while (n_left_from > 0)
+    {
+      u32 n_left_to_next;
+
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+
+      while (n_left_from > 0 && n_left_to_next > 0)
+	{
+	  u32 bi0;
+	  vlib_buffer_t *b0;
+	  u32 next0 = HANAT_WORKER_SLOW_INPUT_NEXT_DROP;
+	  u32 error0 = 0;
+	  udp_header_t *u0;
+	  hanat_header_t *h0;
+	  ip4_header_t *ip40 = 0;
+
+	  /* speculatively enqueue b0 to the current next frame */
+	  bi0 = from[0];
+	  to_next[0] = bi0;
+	  from += 1;
+	  to_next += 1;
+	  n_left_from -= 1;
+	  n_left_to_next -= 1;
+
+	  b0 = vlib_get_buffer (vm, bi0);
+	  h0 = vlib_buffer_get_current (b0);
+	  u0 = (udp_header_t *) ((u8 *) h0 - sizeof (*u0));
+
+	  ip40 = (ip4_header_t *) (((u8 *) u0) - sizeof (ip4_header_t));
+	  if (ip40->ip_version_and_header_length != 0x45) {
+	    error0 = 0; //DNS46_REQUEST_ERROR_IP_OPTIONS;
+	    goto done0;
+	  }
+
+	  typedef struct {
+	    u8 t;
+	    u8 l;
+	  } tl_t;
+
+	  tl_t *tl = (tl_t *)(h0 + 1);
+
+	  switch(tl->t) {
+	  case HANAT_SESSION_BINDING:
+	    {
+	      hanat_option_session_binding_t *sp = (hanat_option_session_binding_t *)(h0 + 1);
+
+	      /*
+	       * Lookup based on session-id
+	       * Add data to pool
+	       * Ship cached packet
+	       */
+	      hanat_session_t *s = pool_elt_at_index(hm->db.sessions, ntohl(sp->session_id));
+	      if (!s) {
+		clib_warning("Could not find session %d", ntohl(sp->session_id));
+		goto done0;
+	      }
+
+	      /* Update session entry */
+	      s->entry.instructions = ntohl(sp->instructions);
+	      s->entry.fib_index = ntohl(sp->fib_index);
+	      memcpy(&s->entry.post_sa, &sp->sa.as_u32, 4);
+	      memcpy(&s->entry.post_da, &sp->da.as_u32, 4);
+	      s->entry.post_sp = sp->sp; /* Network byte order */
+	      s->entry.post_dp = sp->dp; /* Network byte order */
+	    }
+	    break;
+	  case HANAT_SESSION_DECLINE:
+	    break;
+	  default:
+	    // increase error counter
+	    // move tl
+	    break;
+	  }
+
+	done0:
+	  b0->error = node->errors[error0];
+
+	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
+			     && (b0->flags & VLIB_BUFFER_IS_TRACED)))
+	    {
+	      hanat_worker_slow_trace_t *t =
+		vlib_add_trace (vm, node, b0, sizeof (*t));
+	    }
+
+	  /* verify speculative enqueue, maybe switch current next frame */
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next,
+					   bi0, next0);
+	}
+
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+    }
+
+  return frame->n_vectors;
 }
 
 /* *INDENT-OFF* */
@@ -301,7 +404,7 @@ VLIB_REGISTER_NODE(hanat_worker_slow_output_node, static) = {
     },
     .format_trace = format_hanat_worker_slow_trace,
 };
-VLIB_REGISTER_NODE(hanat_worker_slow_input_node, static) = {
+VLIB_REGISTER_NODE(hanat_worker_slow_input_node) = {
     .function = hanat_worker_slow_input,
     .name = "hanat-worker-slow-input",
     /* Takes a vector of packets. */
@@ -318,15 +421,3 @@ VLIB_REGISTER_NODE(hanat_worker_slow_input_node, static) = {
     .format_trace = format_hanat_worker_slow_trace,
 };
 /* *INDENT-ON* */
-
-void
-hanat_worker_slow_init (vlib_main_t *vm)
-{
-  hanat_worker_main_t *hm = &hanat_worker_main;
-
-  hm->udp_port = HANAT_WORKER_UDP_PORT;
-
-  udp_register_dst_port (vm, HANAT_WORKER_UDP_PORT,
-                         hanat_worker_slow_input_node.index, /* is_ip4 */ 1);
-
-}

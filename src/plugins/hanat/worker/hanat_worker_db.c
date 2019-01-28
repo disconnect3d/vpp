@@ -130,6 +130,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   s = hanat_session_find(db, &key);
   if (s) {
     /* Just buffer packet */
+    // TODO: Only buffer a maximum of n packets
     vec_add1(s->entry.buffer_vec, bi);
     return s;
   }
