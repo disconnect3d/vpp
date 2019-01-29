@@ -25,7 +25,9 @@ class Event(Packet):
                    ShortField("out_l_port", None),
                    ShortField("out_r_port", None),
                    IntField("pool_id", None),
-                   IntField("tenant_id", None)]
+                   IntField("tenant_id", None),
+                   LongField("total_pkts", 0),
+                   LongField("total_bytes", 0)]
 
     def extract_padding(self, s):
         return "", s
