@@ -68,10 +68,10 @@ class TestHANATmapper(VppTestCase):
                                                           pool_id=2,
                                                           is_add=True)
 
-        self.vapi.hanat_mapper_set_state_sync(self.pg0.local_ip4n,
-                                              self.local_sync_port,
-                                              self.pg0.remote_ip4n,
-                                              self.remote_sync_port)
+        self.vapi.papi.hanat_mapper_set_state_sync_listener(
+            ip_address=self.pg0.local_ip4,
+            port=self.local_sync_port,
+            path_mtu=512)
 
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
@@ -127,12 +127,30 @@ class TestHANATmapper(VppTestCase):
             '/err/hanat-state-sync/pkts-processed')
         self.assertEqual(stats, 2)
 
+        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
+                                                          pool_id=2,
+                                                          is_add=False)
+
     def test_hanat_state_sync_send(self):
         bind_layers(UDP, HANATStateSync, sport=self.local_sync_port)
-        self.vapi.hanat_mapper_set_state_sync(self.pg0.local_ip4n,
-                                              self.local_sync_port,
-                                              self.pg0.remote_ip4n,
-                                              self.remote_sync_port)
+
+        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
+                                                          pool_id=2,
+                                                          is_add=True)
+
+        self.vapi.papi.hanat_mapper_set_state_sync_listener(
+            ip_address=self.pg0.local_ip4,
+            port=self.local_sync_port,
+            path_mtu=512)
+
+        rv = self.vapi.papi.hanat_mapper_add_del_state_sync_failover(
+            ip_address=self.pg0.remote_ip4,
+            port=self.remote_sync_port,
+            is_add=True)
+
+        self.vapi.papi.hanat_mapper_set_pool_failover(
+            pool_id=2, failover_index=rv.failover_index)
+
         self.pg_enable_capture(self.pg_interfaces)
         cli_str = "hanat-mapper add session "
         cli_str += "in-local 1.2.3.4:12345 "
@@ -172,6 +190,10 @@ class TestHANATmapper(VppTestCase):
 
         stats = self.statistics.get_counter('/hanat-mapper/add-event-send')
         self.assertEqual(stats[0][0], 2)
+
+        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
+                                                          pool_id=2,
+                                                          is_add=False)
 
     def test_hanat_mapper(self):
         self.vapi.hanat_mapper_enable(self.mapper_port)

@@ -82,15 +82,32 @@ autoreply define hanat_mapper_add_del_static_mapping {
   u8 is_add;
 };
 
-autoreply define hanat_mapper_set_state_sync {
+autoreply define hanat_mapper_set_state_sync_listener {
   u32 client_index;
   u32 context;
-  vl_api_ip4_address_t src_ip_address;
-  vl_api_ip4_address_t failover_ip_address;
-  u16 src_port;
-  u16 failover_port;
+  vl_api_ip4_address_t ip_address;
+  u16 port;
   u32 path_mtu;
+};
+
+define hanat_mapper_add_del_state_sync_failover {
+  u32 client_index;
+  u32 context;
+  vl_api_ip4_address_t ip_address;
+  u16 port;
+  u8 is_add;
+};
+define hanat_mapper_add_del_state_sync_failover_reply {
+  u32 context;
+  i32 retval;
+  u32 failover_index;
+};
+
+autoreply define hanat_mapper_set_pool_failover {
+  u32 client_index;
+  u32 context;
   u32 pool_id;
+  u32 failover_index;
 };
 
 define hanat_mapper_user_dump {

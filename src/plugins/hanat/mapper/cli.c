@@ -231,55 +231,6 @@ done:
   return error;
 }
 
-static clib_error_t *
-hanat_mapper_set_state_sync_command_fn (vlib_main_t * vm,
-					unformat_input_t * input,
-					vlib_cli_command_t * cmd)
-{
-  unformat_input_t _line_input, *line_input = &_line_input;
-  clib_error_t *error = 0;
-  ip4_address_t src_addr, failover_addr;
-  u32 src_port, failover_port, path_mtu = 512;
-  int rv = 0;
-
-  /* Get a line of input. */
-  if (!unformat_user (input, unformat_line_input, line_input))
-    return 0;
-
-  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
-    {
-      if (unformat (line_input, "src %U:%u", unformat_ip4_address, &src_addr,
-		    &src_port))
-	;
-      else if (unformat (line_input, "failover %U:%u", unformat_ip4_address,
-			 &failover_addr, &failover_port))
-	;
-      else if (unformat (line_input, "path-mtu %d", &path_mtu))
-	;
-      else
-	{
-	  error = clib_error_return (0, "unknown input '%U'",
-				     format_unformat_error, line_input);
-	  goto done;
-	}
-    }
-
-  rv =
-    hanat_state_sync_set (&src_addr, &failover_addr, (u16) src_port,
-			  (u16) failover_port, path_mtu);
-
-  if (rv)
-    {
-      error = clib_error_return (0, "set hanat-mapper state sync failed");
-      goto done;
-    }
-
-done:
-  unformat_free (line_input);
-
-  return error;
-}
-
 u8 *
 format_session (u8 * s, va_list * args)
 {
@@ -366,7 +317,7 @@ hanat_mapper_state_sync_flush_command_fn (vlib_main_t * vm,
 					  unformat_input_t * input,
 					  vlib_cli_command_t * cmd)
 {
-  hanat_state_sync_event_add (0, 1, vm->thread_index);
+  hanat_state_sync_flush (vm);
 
   return 0;
 }
@@ -383,6 +334,7 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   u8 is_add = 1;
   clib_error_t *error = 0;
   hanat_state_sync_event_t event;
+  hanat_mapper_addr_pool_t *pool;
 
   /* Get a line of input. */
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -427,6 +379,13 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
 	}
     }
 
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    {
+      error = clib_error_return (0, "pool-id %d not found", pool_id);
+      goto done;
+    }
+
   event.in_l_addr = in_l_addr.as_u32;
   event.in_r_addr = in_r_addr.as_u32;
   event.in_l_port = clib_host_to_net_u16 (in_l_port);
@@ -440,7 +399,8 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   event.protocol = proto;
   event.flags = 0;
   event.event_type = is_add ? HANAT_STATE_SYNC_ADD : HANAT_STATE_SYNC_DEL;
-  hanat_state_sync_event_add (&event, 0, vm->thread_index);
+  hanat_state_sync_event_add (&event, 0, pool->failover_index,
+			      vm->thread_index);
 
 done:
   unformat_free (line_input);
@@ -477,13 +437,6 @@ VLIB_CLI_COMMAND (hanat_mapper_add_static_mapping_command, static) = {
                 "local <ip-addr>:<port> external <ip-addr>:<port> "
                 "pool-id <id> [tenant-id <id>] [del]",
   .function = hanat_mapper_add_static_mapping_command_fn,
-};
-
-VLIB_CLI_COMMAND (hanat_mapper_set_state_sync_command, static) = {
-  .path = "set hanat-mapper state sync",
-  .short_help = "set hanat-mapper state sync src <ip-addr>:<port> "
-                "failover <ip-addr>:<port> [path-mtu <path-mtu>]",
-  .function = hanat_mapper_set_state_sync_command_fn,
 };
 
 VLIB_CLI_COMMAND (hanat_mapper_show_sessions_command, static) = {
