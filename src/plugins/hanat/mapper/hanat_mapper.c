@@ -28,19 +28,6 @@ VLIB_PLUGIN_REGISTER () = {
 };
 /* *INDENT-ON* */
 
-static inline hanat_mapper_addr_pool_t *
-get_pool_by_pool_id (u32 pool_id)
-{
-  hanat_mapper_main_t *nm = &hanat_mapper_main;
-  hanat_mapper_addr_pool_t *pool;
-  uword *p = hash_get (nm->pool_index_by_pool_id, pool_id);
-  if (!p)
-    return 0;
-
-  pool = pool_elt_at_index (nm->ext_addr_pool, p[0]);
-  return pool;
-}
-
 static_always_inline u16
 random_port (u16 min, u16 max)
 {
@@ -257,6 +244,7 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
 
       pool_get (nm->ext_addr_pool, pool);
       pool->pool_id = pool_id;
+      pool->failover_index = ~0;
       hash_set (nm->pool_index_by_pool_id, pool_id, pool - nm->ext_addr_pool);
       start_addr.as_u32 = prefix->as_u32;
       ip4_address_normalize (&start_addr, prefix_len);
@@ -294,6 +282,20 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
       hash_unset (nm->pool_index_by_pool_id, pool->pool_id);
       pool_put (nm->ext_addr_pool, pool);
     }
+
+  return 0;
+}
+
+int
+hanat_mapper_set_pool_failover (u32 pool_id, u32 failover_index)
+{
+  hanat_mapper_addr_pool_t *pool;
+
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+  pool->failover_index = failover_index;
 
   return 0;
 }

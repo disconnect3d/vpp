@@ -34,19 +34,24 @@ typedef enum
   HANAT_STATE_SYNC_N_COUNTERS
 } hanat_state_sync_counter_t;
 
-typedef struct hanat_state_sync_main_s
+typedef struct
 {
-  ip4_address_t src_ip_address;
-  ip4_address_t failover_ip_address;
-  u16 src_port;
-  u16 failover_port;
-  u32 state_sync_path_mtu;
+  ip4_address_t ip_address;
+  u16 port;
   vlib_buffer_t *state_sync_buffer;
   vlib_frame_t *state_sync_frame;
   u16 state_sync_count;
   u32 state_sync_next_event_offset;
+} hanat_state_sync_failover_t;
+
+typedef struct hanat_state_sync_main_s
+{
+  ip4_address_t src_ip_address;
+  u16 src_port;
+  u32 state_sync_path_mtu;
   vlib_simple_counter_main_t counters[HANAT_STATE_SYNC_N_COUNTERS];
   vlib_main_t *vlib_main;
+  hanat_state_sync_failover_t *failovers;
 } hanat_state_sync_main_t;
 
 hanat_state_sync_main_t hanat_state_sync_main;
@@ -57,13 +62,8 @@ hanat_state_sync_init (vlib_main_t * vm)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
 
-  sm->state_sync_buffer = 0;
-  sm->state_sync_frame = 0;
-  sm->state_sync_count = 0;
   sm->src_ip_address.as_u32 = 0;
-  sm->failover_ip_address.as_u32 = 0;
   sm->src_port = 0;
-  sm->failover_port = 0;
 
 #define _(N, s, v) sm->counters[v].name = s;              \
   sm->counters[v].stat_segment_name = "/hanat-mapper/" s; \
@@ -75,22 +75,61 @@ hanat_state_sync_init (vlib_main_t * vm)
 }
 
 int
-hanat_state_sync_set (ip4_address_t * src_addr, ip4_address_t * failover_addr,
-		      u16 src_port, u16 failover_port, u32 path_mtu)
+hanat_state_sync_set_listener (ip4_address_t * addr, u16 port, u32 path_mtu)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
 
-  sm->src_ip_address.as_u32 = src_addr->as_u32;
-  sm->failover_ip_address.as_u32 = failover_addr->as_u32;
-  sm->src_port = src_port;
-  sm->failover_port = failover_port;
+  sm->src_ip_address.as_u32 = addr->as_u32;
+  sm->src_port = port;
   sm->state_sync_path_mtu = path_mtu;
 
-  udp_register_dst_port (sm->vlib_main, src_port, hanat_state_sync_node.index,
-			 1);
+  udp_register_dst_port (sm->vlib_main, port, hanat_state_sync_node.index, 1);
 
-  vlib_process_signal_event (sm->vlib_main,
-			     hanat_state_sync_process_node.index, 1, 0);
+  return 0;
+}
+
+int
+hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
+				   u32 * index, u8 is_add)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  hanat_state_sync_failover_t *failover = 0, *f;
+
+  /* *INDENT-OFF* */
+  pool_foreach (f, sm->failovers,
+  ({
+    if (f->ip_address.as_u32 == addr->as_u32 && f->port == port)
+      {
+        failover = f;
+        break;
+      }
+  }));
+  /* *INDENT-ON* */
+
+  if (is_add)
+    {
+      if (failover)
+	return VNET_API_ERROR_VALUE_EXIST;
+
+      if (!pool_elts (sm->failovers))
+	vlib_process_signal_event (sm->vlib_main,
+				   hanat_state_sync_process_node.index, 1, 0);
+
+      pool_get (sm->failovers, failover);
+      clib_memset (failover, 0, sizeof (*failover));
+      failover->port = port;
+      failover->ip_address.as_u32 = addr->as_u32;
+      *index = failover - sm->failovers;
+    }
+  else
+    {
+      if (!failover)
+	return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+      /* flush chached events */
+      hanat_state_sync_event_add (0, 1, failover - sm->failovers, 0);
+      pool_put (sm->failovers, failover);
+    }
 
   return 0;
 }
@@ -234,12 +273,15 @@ hanat_state_sync_event_process (hanat_state_sync_event_t * event, f64 now,
 }
 
 static inline void
-hanat_state_sync_header_create (vlib_buffer_t * b, u32 * offset)
+hanat_state_sync_header_create (vlib_buffer_t * b, u32 * offset,
+				u32 failover_index)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
   hanat_state_sync_message_header_t *h;
   ip4_header_t *ip;
   udp_header_t *udp;
+  hanat_state_sync_failover_t *failover =
+    pool_elt_at_index (sm->failovers, failover_index);
 
   b->current_data = 0;
   b->current_length = sizeof (*ip) + sizeof (*udp) + sizeof (*h);
@@ -257,9 +299,9 @@ hanat_state_sync_header_create (vlib_buffer_t * b, u32 * offset)
   ip->flags_and_fragment_offset =
     clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
   ip->src_address.as_u32 = sm->src_ip_address.as_u32;
-  ip->dst_address.as_u32 = sm->failover_ip_address.as_u32;
+  ip->dst_address.as_u32 = failover->ip_address.as_u32;
   udp->src_port = clib_host_to_net_u16 (sm->src_port);
-  udp->dst_port = clib_host_to_net_u16 (sm->failover_port);
+  udp->dst_port = clib_host_to_net_u16 (failover->port);
   udp->checksum = 0;
 
   h->version = HANAT_STATE_SYNC_VERSION;
@@ -272,19 +314,22 @@ hanat_state_sync_header_create (vlib_buffer_t * b, u32 * offset)
 }
 
 static inline void
-hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b)
+hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b,
+		       u32 failover_index)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
   hanat_state_sync_message_header_t *h;
   ip4_header_t *ip;
   udp_header_t *udp;
   vlib_main_t *vm = sm->vlib_main;
+  hanat_state_sync_failover_t *failover =
+    pool_elt_at_index (sm->failovers, failover_index);
 
   ip = vlib_buffer_get_current (b);
   udp = ip4_next_header (ip);
   h = (hanat_state_sync_message_header_t *) (udp + 1);
 
-  h->count = clib_host_to_net_u16 (sm->state_sync_count);
+  h->count = clib_host_to_net_u16 (failover->state_sync_count);
 
   ip->length = clib_host_to_net_u16 (b->current_length);
   ip->checksum = ip4_header_checksum (ip);
@@ -295,18 +340,21 @@ hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b)
 
 void
 hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
-			    u32 thread_index)
+			    u32 failover_index, u32 thread_index)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
   vlib_main_t *vm = sm->vlib_main;
   vlib_buffer_t *b = 0;
   vlib_frame_t *f;
   u32 bi = ~0, offset;
+  hanat_state_sync_failover_t *failover;
 
-  if (!sm->failover_port)
+  if (pool_is_free_index (sm->failovers, failover_index))
     return;
 
-  b = sm->state_sync_buffer;
+  failover = pool_elt_at_index (sm->failovers, failover_index);
+
+  b = failover->state_sync_buffer;
 
   if (PREDICT_FALSE (b == 0))
     {
@@ -319,7 +367,7 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
 	  return;
 	}
 
-      b = sm->state_sync_buffer = vlib_get_buffer (vm, bi);
+      b = failover->state_sync_buffer = vlib_get_buffer (vm, bi);
       clib_memset (vnet_buffer (b), 0, sizeof (*vnet_buffer (b)));
       VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
       offset = 0;
@@ -327,28 +375,28 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
   else
     {
       bi = vlib_get_buffer_index (vm, b);
-      offset = sm->state_sync_next_event_offset;
+      offset = failover->state_sync_next_event_offset;
     }
 
-  f = sm->state_sync_frame;
+  f = failover->state_sync_frame;
   if (PREDICT_FALSE (f == 0))
     {
       u32 *to_next;
       f = vlib_get_frame_to_node (vm, ip4_lookup_node.index);
-      sm->state_sync_frame = f;
+      failover->state_sync_frame = f;
       to_next = vlib_frame_vector_args (f);
       to_next[0] = bi;
       f->n_vectors = 1;
     }
 
-  if (PREDICT_FALSE (sm->state_sync_count == 0))
-    hanat_state_sync_header_create (b, &offset);
+  if (PREDICT_FALSE (failover->state_sync_count == 0))
+    hanat_state_sync_header_create (b, &offset, failover_index);
 
   if (PREDICT_TRUE (do_flush == 0))
     {
       clib_memcpy_fast (b->data + offset, event, sizeof (*event));
       offset += sizeof (*event);
-      sm->state_sync_count++;
+      failover->state_sync_count++;
       b->current_length += sizeof (*event);
 
       switch (event->event_type)
@@ -376,14 +424,28 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
   if (PREDICT_FALSE
       (do_flush || offset + (sizeof (*event)) > sm->state_sync_path_mtu))
     {
-      hanat_state_sync_send (f, b);
-      sm->state_sync_buffer = 0;
-      sm->state_sync_frame = 0;
-      sm->state_sync_count = 0;
+      hanat_state_sync_send (f, b, failover_index);
+      failover->state_sync_buffer = 0;
+      failover->state_sync_frame = 0;
+      failover->state_sync_count = 0;
       offset = 0;
     }
 
-  sm->state_sync_next_event_offset = offset;
+  failover->state_sync_next_event_offset = offset;
+}
+
+void
+hanat_state_sync_flush (vlib_main_t * vm)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  u32 i;
+
+  /* *INDENT-OFF* */
+  pool_foreach_index (i, sm->failovers,
+  ({
+    hanat_state_sync_event_add (0, 1, i, vm->thread_index);
+  }));
+  /* *INDENT-ON* */
 }
 
 static uword
@@ -404,7 +466,7 @@ hanat_state_sync_process (vlib_main_t * vm, vlib_node_runtime_t * rt,
       vlib_process_wait_for_event_or_clock (vm, 5.0);
       event_type = vlib_process_get_events (vm, &event_data);
       vec_reset_length (event_data);
-      hanat_state_sync_event_add (0, 1, vm->thread_index);
+      hanat_state_sync_flush (vm);
     }
 
   return 0;
