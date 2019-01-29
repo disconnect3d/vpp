@@ -251,7 +251,10 @@ format_session (u8 * s, va_list * args)
 	      format_ip4_address, &session->out_r_addr,
 	      clib_net_to_host_u16 (session->out_r_port),
 	      format_hanat_mapper_protocol, mapping->proto);
-
+  s = format (s, "%Utotal pkts %llu\n",
+	      format_white_space, indent + 4, session->total_pkts);
+  s = format (s, "%Utotal bytes %llu\n",
+	      format_white_space, indent + 4, session->total_bytes);
   return s;
 }
 

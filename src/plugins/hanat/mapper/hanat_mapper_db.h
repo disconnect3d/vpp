@@ -47,7 +47,7 @@ typedef struct
   u32 flags;
   f64 expire;
   u64 total_bytes;
-  u32 total_pkts;
+  u64 total_pkts;
   u8 *opaque_data;
 } hanat_mapper_session_t;
 

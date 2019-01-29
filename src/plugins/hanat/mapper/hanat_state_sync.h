@@ -25,7 +25,7 @@ typedef struct
   u8 version;
   u8 rsvd;
   u16 count;
-} hanat_state_sync_message_header_t;
+} __attribute__ ((packed)) hanat_state_sync_message_header_t;
 
 typedef struct
 {
@@ -42,7 +42,9 @@ typedef struct
   u16 out_r_port;
   u32 pool_id;
   u32 tenant_id;
-} hanat_state_sync_event_t;
+  u64 total_pkts;
+  u64 total_bytes;
+} __attribute__ ((packed)) hanat_state_sync_event_t;
 
 typedef enum
 {
