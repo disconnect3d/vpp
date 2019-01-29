@@ -247,7 +247,11 @@ hanat_state_sync_recv_keepalive (hanat_state_sync_event_t * event, f64 now,
 			      clib_net_to_host_u32 (event->tenant_id), 1);
 
   if (session)
-    session_reset_timeout (nm, session, now);
+    {
+      session_reset_timeout (nm, session, now);
+      session->total_bytes = clib_net_to_host_u64 (event->total_bytes);
+      session->total_pkts = clib_net_to_host_u64 (event->total_pkts);
+    }
 }
 
 void

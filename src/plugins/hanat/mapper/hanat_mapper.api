@@ -142,6 +142,8 @@ define hanat_mapper_user_session_details {
   u32 tenant_id;
   u32 pool_id;
   u8 protocol;
+  u64 total_bytes;
+  u64 total_pkts;
 };
 
 /*
