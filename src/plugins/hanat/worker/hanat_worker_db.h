@@ -18,12 +18,20 @@
 
 #include <stdbool.h>
 #include <vppinfra/bihash_16_8.h>
+#include <vppinfra/bihash_8_8.h>
 #include <vppinfra/bihash_template.h>
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/ip/ip6_packet.h>
 #include "../protocol/hanat_protocol.h"
 
 typedef unsigned int u32;
+
+/* Move to vnet/ip? */
+typedef struct {
+  u16 identifier;
+  u16 sequence;
+} icmp_echo_header_t;
+
 
 /* NAT 6-tuple key. 16 octets */
 typedef struct {
@@ -61,6 +69,7 @@ typedef struct {
   u16 tcp_mss;
   //  vlib_combined_counter_t counter;
   u32 buffer;
+  f64 last_heard;
 } hanat_session_entry_t;
 
 typedef struct {
@@ -89,13 +98,6 @@ typedef struct
   ip46_address_t mapper;
   u16 udp_port;
 } hanat_pool_entry_t;
-
-typedef struct {
-  union {
-    u32 as_u32[2];
-    u64 as_u64;
-  };
-} hanat_pool_key_t;
 
 typedef struct
 {
@@ -150,8 +152,7 @@ int hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[]);
 int hanat_worker_enable(u16 udp_port);
 
 void hanat_mapper_table_init(hanat_pool_t *db);
-void hanat_lpm_64_add (hanat_pool_t *lpm, void *addr_v, u8 pfxlen, u32 value);
-void hanat_lpm_64_delete (hanat_pool_t *lpm, void *addr_v, u8 pfxlen);
-u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, void *addr_v, u8 pfxlen);
-
+void hanat_lpm_64_add (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen, u32 value);
+void hanat_lpm_64_delete (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen);
+u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, u32 fib_index, u32 address);
 #endif

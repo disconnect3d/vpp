@@ -1,6 +1,7 @@
 #include <assert.h>
 #include "hanat_worker_db.h"
 #include <vnet/udp/udp_packet.h>
+#include <vnet/ip/icmp46_packet.h>
 #include <vppinfra/bihash_template.c>
 #include <vppinfra/vec.h>
 
@@ -47,6 +48,13 @@ hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
     udp_header_t *udp = ip4_next_header (ip);
     sport = udp->src_port;
     dport = udp->dst_port;
+  } else if (ip->protocol == IP_PROTOCOL_ICMP) {
+    icmp46_header_t *icmp = (icmp46_header_t *) ip4_next_header (ip);
+    if (icmp->type == ICMP4_echo_request ||
+	icmp->type == ICMP4_echo_reply) {
+      icmp_echo_header_t *echo = (icmp_echo_header_t *) (icmp + 1);
+      dport = sport = echo->identifier;
+    }
   }
 
   key->sa = ip->src_address;
@@ -84,6 +92,19 @@ hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip)
 static int
 hanat_session_stale_cb(clib_bihash_kv_16_8_t *kv, void *arg)
 {
+  vlib_main_t *vm = vlib_get_main();
+  hanat_db_t *db = arg;
+  hanat_session_t *s = pool_elt_at_index (db->sessions, kv->value);
+  f64 now = vlib_time_now (vm);
+
+  if (now >= s->entry.last_heard + 10) {
+    /* Session timed out, reusing!!! */
+    // Send session refresh data
+    clib_warning("Reusing session");
+    pool_put_index(db->sessions, kv->value);
+
+    return 1;
+  }
   return 0;
 }
 
@@ -113,7 +134,7 @@ hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry
     return 0;
   }
 #endif
-  if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, 0))
+  if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, &db))
     assert(0);
   return s;
 }
@@ -147,7 +168,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   kv.key[0] = key.as_u64[0];
   kv.key[1] = key.as_u64[1];
   kv.value = s - db->sessions;
-  if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, 0))
+  if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, &db))
     assert(0);
   return s;
 }
@@ -195,14 +216,19 @@ masked_address64 (uint64_t addr, uint8_t len)
   return len == 64 ? addr : addr & ~(~0ull >> len);
 }
 
-static int
-lpm_64_lookup_core (hanat_pool_t *lpm, u64 *addr, u8 pfxlen, u32 *value)
+static u64
+lpm_key (u64 fib_index, u32 address)
 {
-  BVT(clib_bihash_kv) kv, v;
+  return fib_index << 32 | address;
+}
+
+static int
+lpm_64_lookup_core (hanat_pool_t *lpm, u64 addr, u8 pfxlen, u32 *value)
+{
+  clib_bihash_kv_8_8_t kv, v;
   int rv;
-  kv.key[0] = masked_address64(*addr, pfxlen);
-  kv.key[1] = pfxlen;
-  rv = BV(clib_bihash_search_inline_2)(&lpm->bihash, &kv, &v);
+  kv.key = masked_address64(addr, pfxlen);
+  rv = clib_bihash_search_8_8(&lpm->bihash, &kv, &v);
   if (rv != 0)
     return -1;
   *value = v.value;
@@ -210,14 +236,14 @@ lpm_64_lookup_core (hanat_pool_t *lpm, u64 *addr, u8 pfxlen, u32 *value)
 }
 
 u32
-hanat_lpm_64_lookup (hanat_pool_t *lpm, void *addr_v, u8 pfxlen)
+hanat_lpm_64_lookup (hanat_pool_t *lpm, u32 fib_index, u32 address)
 {
-  u64 *addr = addr_v;
+  u64 addr = lpm_key(fib_index, address);
   int i = 0, rv;
   u32 value;
   clib_bitmap_foreach (i, lpm->prefix_lengths_bitmap,
     ({
-      rv = lpm_64_lookup_core(lpm, addr, i, &value);
+      rv = lpm_64_lookup_core(lpm, addr, 64 - i, &value);
       if (rv == 0)
 	return value;
     }));
@@ -225,33 +251,39 @@ hanat_lpm_64_lookup (hanat_pool_t *lpm, void *addr_v, u8 pfxlen)
 }
 
 void
-hanat_lpm_64_add (hanat_pool_t *lpm, void *addr_v, u8 pfxlen, u32 value)
+hanat_lpm_64_add (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen, u32 value)
 {
-  BVT(clib_bihash_kv) kv;
-  u64 *addr = addr_v;
+  clib_bihash_kv_8_8_t kv;
+  u64 addr = lpm_key(fib_index, address);
+  int len = pfxlen + 32;
 
-  kv.key[0] = masked_address64(*addr, pfxlen);
-  kv.key[1] = pfxlen;
+  kv.key = masked_address64(addr, len);
   kv.value = value;
-  BV(clib_bihash_add_del)(&lpm->bihash, &kv, 1);
-  lpm->prefix_length_refcount[pfxlen]++;
-  lpm->prefix_lengths_bitmap = clib_bitmap_set (lpm->prefix_lengths_bitmap, 64 - pfxlen, 1);
+  if (clib_bihash_add_del_8_8 (&lpm->bihash, &kv, 1)) {
+    clib_warning("ADD failed");
+    assert(0);
+  }
+  lpm->prefix_length_refcount[len]++;
+  lpm->prefix_lengths_bitmap = clib_bitmap_set (lpm->prefix_lengths_bitmap, 64 - len, 1);
 }
 
 void
-hanat_lpm_64_delete (hanat_pool_t *lpm, void *addr_v, u8 pfxlen)
+hanat_lpm_64_delete (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen)
 {
-  u64 *addr = addr_v;
-  BVT(clib_bihash_kv) kv;
-  kv.key[0] = masked_address64(*addr, pfxlen);
-  kv.key[1] = pfxlen;
-  BV(clib_bihash_add_del)(&lpm->bihash, &kv, 0);
+  u64 addr = lpm_key(fib_index, address);
+  clib_bihash_kv_8_8_t kv;
+  int len = pfxlen + 32;
+  kv.key = masked_address64(addr, len);
+  if (clib_bihash_add_del_8_8 (&lpm->bihash, &kv, 0)) {
+    clib_warning("DELETE failed");
+    assert(0);
+  }
 
   /* refcount accounting */
-  ASSERT (lpm->prefix_length_refcount[pfxlen] > 0);
-  if (--lpm->prefix_length_refcount[pfxlen] == 0) {
+  ASSERT (lpm->prefix_length_refcount[len] > 0);
+  if (--lpm->prefix_length_refcount[len] == 0) {
     lpm->prefix_lengths_bitmap = clib_bitmap_set (lpm->prefix_lengths_bitmap, 
-						  64 - pfxlen, 0);
+						  64 - len, 0);
   }
 }
 
@@ -259,24 +291,6 @@ hanat_lpm_64_delete (hanat_pool_t *lpm, void *addr_v, u8 pfxlen)
 void
 hanat_mapper_table_init(hanat_pool_t *db)
 {
-  
   /* Make bihash sizes configurable */
-  BV (clib_bihash_init) (&(db->bihash),
-			 "LPM 64", 64*1024, 32<<20);
- 
+  clib_bihash_init_8_8 (&db->bihash, "LPM 64", 64*1024, 32<<20);
 }
-
-#if 0
-
-//hanat_hash_XXX
-/*
- * Map IP4 destination address to mapping id.
- * Used by out2in.
- */
-u32
-hanat_lpm_lookup (u32 vrfid, ip4_address_t *da)
-{
-  //  lpm_lookup();
-  return 0;
-}
-#endif

@@ -56,9 +56,10 @@ typedef enum {
 /*
  * Counters
  */
-#define foreach_hanat_worker_slow_counters		\
+#define foreach_hanat_worker_slow_counters	\
   /* Must be first. */				\
-  _(MAPPER_REQUEST, "mapper request")
+  _(MAPPER_REQUEST, "mapper request")		\
+  _(NO_MAPPER, "no mapper found")
 
 typedef enum
 {
@@ -109,9 +110,7 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, bool *in2out)
 
   if (mode == HANAT_WORKER_IF_OUTSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
-    hanat_pool_key_t key = { .as_u32[0] = fib_index,
-			     .as_u32[1] = ip->dst_address.as_u32 };
-    mid = hanat_lpm_64_lookup (&hm->pool_db, &key, 32);
+    mid = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(ip->dst_address.as_u32));
     *in2out = false;
   }
   if (mode == HANAT_WORKER_IF_INSIDE ||
@@ -173,7 +172,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   ip->protocol = IP_PROTOCOL_UDP;
   ip->src_address.as_u32 = pe->src.ip4.as_u32;
   ip->dst_address.as_u32 = pe->mapper.ip4.as_u32;
-  ip->checksum = ip4_header_checksum (ip);
+  //  ip->checksum = ip4_header_checksum (ip);
   len = sizeof(ip4_header_t);
 
   udp_header_t *udp = (udp_header_t *) (ip + 1);
@@ -188,7 +187,6 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
   req->type = HANAT_SESSION_REQUEST;
   req->length = sizeof(hanat_option_session_request_t);
-  clib_warning("SESSION REQUEST %d %d", sizeof(hanat_option_session_request_t), sizeof(hanat_session_descriptor_t));
   req->session_id = htonl(hanat_get_session_index(session));
   req->pool_id = htonl(pe->pool_id);
 
@@ -254,11 +252,15 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							    sw_if_index0);
 	  u32 mid0 = find_mapper(sw_if_index0, fib_index0, ip0, &in2out);
-	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
-	  if (pe) {
-	    hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
-	    send_hanat_protocol_request(vm, fib_index0, b0, pe, s, in2out);
+	  if (mid0 != ~0) {
+	    hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
+	    if (pe) {
+	      hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
+	      send_hanat_protocol_request(vm, fib_index0, b0, pe, s, in2out);
+	    }
 	  } else {
+	    clib_warning("Could not find mapper %d", mid0);
+	    b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
 	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			       && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
@@ -272,7 +274,6 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	    vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					     to_next, n_left_to_next,
 					     bi0, next0);
-
 	  }
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);

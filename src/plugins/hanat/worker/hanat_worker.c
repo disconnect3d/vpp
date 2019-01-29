@@ -69,7 +69,7 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
     interface->sw_if_index = sw_if_index;
     interface->mode = mode;
     u32 index = interface - hm->interfaces;
-    vec_validate(hm->interface_by_sw_if_index, index);
+    vec_validate(hm->interface_by_sw_if_index, sw_if_index);
     hm->interface_by_sw_if_index[sw_if_index] = index;
   } else {
     if (!interface)
@@ -77,7 +77,6 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
     pool_put (hm->interfaces, interface);
     hm->interface_by_sw_if_index[sw_if_index] = ~0;
   }
-  clib_warning("ADDING HANAT WORKER TO %d", sw_if_index);
   return vnet_feature_enable_disable ("ip4-unicast", "hanat-worker",
 				      sw_if_index, is_add, 0, 0);
 }
@@ -148,7 +147,10 @@ hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
   entry->post_dp = dport; /* Network byte order */
 
   ip_csum_t c = l3_checksum_delta(instructions, key->sa, entry->post_sa, key->da, entry->post_da);
-  entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
+  if (key->proto == IP_PROTOCOL_ICMP) /* ICMP checksum does not include pseudoheader */
+    entry->l4_checksum = l4_checksum_delta(entry->instructions, 0, key->sp, entry->post_sp, key->dp, entry->post_dp);
+  else
+    entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
   entry->checksum = c;
 
 }
@@ -158,11 +160,12 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 
 			    ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  hanat_pool_key_t key = { .as_u32[0] = pool_id,
-			   .as_u32[1] = prefix->as_u32 };
   hanat_pool_entry_t *poolentry;
-  u32 mi = hanat_lpm_64_lookup (&hm->pool_db, &key, prefix_len);
-
+  u32 mi = hanat_lpm_64_lookup (&hm->pool_db, pool_id, ntohl(prefix->as_u32));
+  if (mi != ~0) {
+    clib_warning("Exists already");
+    return -1;
+  }
   if (is_add) {
     pool_get_zero (hm->pool_db.pools, poolentry);
     *mapper_index = poolentry - hm->pool_db.pools;
@@ -175,9 +178,9 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 
     poolentry->udp_port = udp_port;
 
     /* Add prefix to LPM for outside to in traffix */
-    hanat_lpm_64_add(&hm->pool_db, &key, prefix_len, *mapper_index);
+    hanat_lpm_64_add(&hm->pool_db, pool_id, ntohl(prefix->as_u32), prefix_len, *mapper_index);
   } else {
-    hanat_lpm_64_delete(&hm->pool_db, &key, prefix_len);
+    hanat_lpm_64_delete(&hm->pool_db, pool_id, ntohl(prefix->as_u32), prefix_len);
     pool_put_index(hm->pool_db.pools, mi);
   }
   return 0;

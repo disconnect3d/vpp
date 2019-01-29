@@ -111,6 +111,22 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
     l4csum = udp->checksum;
     l4csum = ip_csum_sub_even(l4csum, s->l4_checksum);
     udp->checksum = ip_csum_fold(l4csum);
+  } else if (ip->protocol == IP_PROTOCOL_ICMP) {
+    icmp46_header_t *icmp = (icmp46_header_t *) ip4_next_header (ip);
+    if (icmp->type == ICMP4_echo_request ||
+	icmp->type == ICMP4_echo_reply) {
+      icmp_echo_header_t *echo = (icmp_echo_header_t *) (icmp + 1);
+      if (s->instructions & HANAT_INSTR_SOURCE_PORT)
+	echo->identifier = s->post_sp;
+      else if (s->instructions & HANAT_INSTR_DESTINATION_PORT)
+	echo->identifier = s->post_dp;
+      l4csum = icmp->checksum;
+      l4csum = ip_csum_sub_even(l4csum, s->l4_checksum);
+      icmp->checksum = ip_csum_fold(l4csum);
+    } else {
+      /* Not implemented */
+      clib_warning("ICMP error not implemented");
+    }
   }
   /* Falling through for other L4 protocols */
   return true;
@@ -118,7 +134,7 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
 
 
 static bool
-hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 *out_fib_index)
+hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, f64 now, u32 *out_fib_index)
 {
   hanat_session_t *s;
 
@@ -127,6 +143,10 @@ hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 *out
   if (!s)
     return false;
   *out_fib_index = s->entry.fib_index;
+  if (now >= s->entry.last_heard + 10) {
+    clib_warning("OLE ENTRY HAS EXPIRED");
+  }
+  s->entry.last_heard = now;
   return transform_packet(&s->entry, ip);
 }
 
@@ -138,7 +158,7 @@ hanat_worker (vlib_main_t * vm,
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 n_left_from, *from, *to_next;
-  //f64 now = vlib_time_now (vm);
+  f64 now = vlib_time_now (vm);
   //u32 thread_index = vm->thread_index;
 
   from = vlib_frame_vector_args (frame);
@@ -177,7 +197,7 @@ hanat_worker (vlib_main_t * vm,
 	   * Lookup and do transform in cache, if miss send to slow path node
 	   */
 	  u32 out_fib_index0;
-	  if (hanat_nat44_transform(&hm->db, fib_index0, ip0, &out_fib_index0)) {
+	  if (hanat_nat44_transform(&hm->db, fib_index0, ip0, now, &out_fib_index0)) {
 	    vnet_feature_next(&next0, b0);
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
 	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
