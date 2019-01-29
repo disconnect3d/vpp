@@ -56,6 +56,7 @@ typedef struct
 {
   u32 pool_id;
   hanat_mapper_address_t *addresses;
+  u32 failover_index;
 } hanat_mapper_addr_pool_t;
 
 typedef int (hanat_mapper_alloc_out_addr_and_port_fn_t) (u32 pool_id,
@@ -108,6 +109,8 @@ int hanat_mapper_enable (u16 port);
 int hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
 					u32 pool_id, u8 is_add);
 
+int hanat_mapper_set_pool_failover (u32 pool_id, u32 failover_index);
+
 int hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 					 ip4_address_t * external_addr,
 					 u16 local_port, u16 external_port,
@@ -154,6 +157,19 @@ session_reset_timeout (hanat_mapper_main_t * nm,
     default:
       break;
     }
+}
+
+always_inline hanat_mapper_addr_pool_t *
+get_pool_by_pool_id (u32 pool_id)
+{
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  hanat_mapper_addr_pool_t *pool;
+  uword *p = hash_get (nm->pool_index_by_pool_id, pool_id);
+  if (!p)
+    return 0;
+
+  pool = pool_elt_at_index (nm->ext_addr_pool, p[0]);
+  return pool;
 }
 
 #endif /* __included_hanat_mapper_h__ */

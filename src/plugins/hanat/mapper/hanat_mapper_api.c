@@ -208,41 +208,97 @@ static void *vl_api_hanat_mapper_add_del_static_mapping_t_print
 }
 
 static void
-  vl_api_hanat_mapper_set_state_sync_t_handler
-  (vl_api_hanat_mapper_set_state_sync_t * mp)
+  vl_api_hanat_mapper_set_state_sync_listener_t_handler
+  (vl_api_hanat_mapper_set_state_sync_listener_t * mp)
 {
-  vl_api_hanat_mapper_set_state_sync_reply_t *rmp;
+  vl_api_hanat_mapper_set_state_sync_listener_reply_t *rmp;
   hanat_mapper_main_t *nm = &hanat_mapper_main;
-  ip4_address_t src_addr, failover_addr;
+  ip4_address_t addr;
   int rv = 0;
 
-  memcpy (&src_addr, &mp->src_ip_address, sizeof (src_addr));
-  memcpy (&failover_addr, &mp->failover_ip_address, sizeof (failover_addr));
+  memcpy (&addr, &mp->ip_address, sizeof (addr));
 
   rv =
-    hanat_state_sync_set (&src_addr, &failover_addr,
-			  clib_net_to_host_u16 (mp->src_port),
-			  clib_net_to_host_u16 (mp->failover_port),
-			  clib_net_to_host_u32 (mp->path_mtu));
+    hanat_state_sync_set_listener (&addr, clib_net_to_host_u16 (mp->port),
+				   clib_net_to_host_u32 (mp->path_mtu));
 
-  REPLY_MACRO (VL_API_HANAT_MAPPER_SET_STATE_SYNC_REPLY);
+  REPLY_MACRO (VL_API_HANAT_MAPPER_SET_STATE_SYNC_LISTENER_REPLY);
 }
 
-static void *vl_api_hanat_mapper_set_state_sync_t_print
-  (vl_api_hanat_mapper_set_state_sync_t * mp, void *handle)
+static void *vl_api_hanat_mapper_set_state_sync_listener_t_print
+  (vl_api_hanat_mapper_set_state_sync_listener_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: hanat_mapper_set_state_sync ");
-  s =
-    format (s, "src_ip_address %U ", format_ip4_address, mp->src_ip_address);
-  s =
-    format (s, "failover_ip_address %U ", format_ip4_address,
-	    mp->failover_ip_address);
-  s = format (s, "src_port %d ", clib_net_to_host_u16 (mp->src_port));
-  s =
-    format (s, "failover_port %d ", clib_net_to_host_u16 (mp->failover_port));
+  s = format (0, "SCRIPT: hanat_mapper_set_state_sync_listener ");
+  s = format (s, "ip_address %U ", format_ip4_address, mp->ip_address);
+  s = format (s, "port %d ", clib_net_to_host_u16 (mp->port));
   s = format (s, "path_mtu %d", clib_net_to_host_u32 (mp->path_mtu));
+
+  FINISH;
+}
+
+static void
+  vl_api_hanat_mapper_add_del_state_sync_failover_t_handler
+  (vl_api_hanat_mapper_add_del_state_sync_failover_t * mp)
+{
+  vl_api_hanat_mapper_add_del_state_sync_failover_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  ip4_address_t addr;
+  int rv = 0;
+  u32 index;
+
+  memcpy (&addr, &mp->ip_address, sizeof (addr));
+
+  rv =
+    hanat_state_sync_add_del_failover (&addr, clib_net_to_host_u16 (mp->port),
+				       &index, mp->is_add);
+
+  /* *INDENT-OFF* */
+  REPLY_MACRO2 (VL_API_HANAT_MAPPER_ADD_DEL_STATE_SYNC_FAILOVER_REPLY,
+  ({
+    rmp->failover_index = clib_host_to_net_u32 (index);
+  }));
+  /* *INDENT-ON* */
+}
+
+static void *vl_api_hanat_mapper_add_del_state_sync_failover_t_print
+  (vl_api_hanat_mapper_add_del_state_sync_failover_t * mp, void *handle)
+{
+  u8 *s;
+
+  s = format (0, "SCRIPT: hanat_mapper_add_del_state_sync_failover ");
+  s = format (s, "ip_address %U ", format_ip4_address, mp->ip_address);
+  s = format (s, "port %d ", clib_net_to_host_u16 (mp->port));
+
+  FINISH;
+}
+
+static void
+  vl_api_hanat_mapper_set_pool_failover_t_handler
+  (vl_api_hanat_mapper_set_pool_failover_t * mp)
+{
+  vl_api_hanat_mapper_set_pool_failover_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  int rv = 0;
+
+  rv =
+    hanat_mapper_set_pool_failover (clib_net_to_host_u32 (mp->pool_id),
+				    clib_net_to_host_u32
+				    (mp->failover_index));
+
+  REPLY_MACRO (VL_API_HANAT_MAPPER_SET_POOL_FAILOVER_REPLY);
+}
+
+static void *vl_api_hanat_mapper_set_pool_failover_t_print
+  (vl_api_hanat_mapper_set_pool_failover_t * mp, void *handle)
+{
+  u8 *s;
+
+  s = format (0, "SCRIPT: hanat_mapper_set_pool_failover ");
+  s = format (s, "pool_id %d failover_index %d ",
+	      clib_net_to_host_u32 (mp->pool_id),
+	      clib_net_to_host_u32 (mp->failover_index));
 
   FINISH;
 }
@@ -387,14 +443,17 @@ static void *vl_api_hanat_mapper_user_session_dump_t_print
 }
 
 /* List of message types that this plugin understands */
-#define foreach_hanat_mapper_plugin_api_msg                                 \
-_(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                     \
-_(HANAT_MAPPER_ENABLE, hanat_mapper_enable)                                 \
-_(HANAT_MAPPER_ADD_DEL_EXT_ADDR_POOL, hanat_mapper_add_del_ext_addr_pool)   \
-_(HANAT_MAPPER_SET_TIMEOUTS, hanat_mapper_set_timeouts)                     \
-_(HANAT_MAPPER_ADD_DEL_STATIC_MAPPING, hanat_mapper_add_del_static_mapping) \
-_(HANAT_MAPPER_SET_STATE_SYNC, hanat_mapper_set_state_sync)                 \
-_(HANAT_MAPPER_USER_DUMP, hanat_mapper_user_dump)                           \
+#define foreach_hanat_mapper_plugin_api_msg                                  \
+_(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                      \
+_(HANAT_MAPPER_ENABLE, hanat_mapper_enable)                                  \
+_(HANAT_MAPPER_ADD_DEL_EXT_ADDR_POOL, hanat_mapper_add_del_ext_addr_pool)    \
+_(HANAT_MAPPER_SET_TIMEOUTS, hanat_mapper_set_timeouts)                      \
+_(HANAT_MAPPER_ADD_DEL_STATIC_MAPPING, hanat_mapper_add_del_static_mapping)  \
+_(HANAT_MAPPER_SET_STATE_SYNC_LISTENER, hanat_mapper_set_state_sync_listener)\
+_(HANAT_MAPPER_ADD_DEL_STATE_SYNC_FAILOVER,                                  \
+  hanat_mapper_add_del_state_sync_failover)                                  \
+_(HANAT_MAPPER_SET_POOL_FAILOVER, hanat_mapper_set_pool_failover)            \
+_(HANAT_MAPPER_USER_DUMP, hanat_mapper_user_dump)                            \
 _(HANAT_MAPPER_USER_SESSION_DUMP, hanat_mapper_user_session_dump)
 
 /* Set up the API message handling tables */

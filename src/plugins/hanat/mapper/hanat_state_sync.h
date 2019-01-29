@@ -52,15 +52,21 @@ typedef enum
 } hanat_state_sync_event_type_t;
 
 void hanat_state_sync_init (vlib_main_t * vm);
-int hanat_state_sync_set (ip4_address_t * src_addr,
-			  ip4_address_t * failover_addr, u16 src_port,
-			  u16 failover_port, u32 path_mtu);
+
+int hanat_state_sync_set_listener (ip4_address_t * addr, u16 port,
+				   u32 path_mtu);
+
+int hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
+				       u32 * index, u8 is_add);
 
 void hanat_state_sync_event_process (hanat_state_sync_event_t * event,
 				     f64 now, u32 thread_index);
 
 void hanat_state_sync_event_add (hanat_state_sync_event_t * event,
-				 u8 do_flush, u32 thread_index);
+				 u8 do_flush, u32 failover_index,
+				 u32 thread_index);
+
+void hanat_state_sync_flush (vlib_main_t * vm);
 
 #endif /* __included_hanat_state_sync_h__ */
 
