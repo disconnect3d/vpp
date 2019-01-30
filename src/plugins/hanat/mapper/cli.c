@@ -255,6 +255,10 @@ format_session (u8 * s, va_list * args)
 	      format_white_space, indent + 4, session->total_pkts);
   s = format (s, "%Utotal bytes %llu\n",
 	      format_white_space, indent + 4, session->total_bytes);
+  s =
+    format (s, "%Uopaque %U\n", format_white_space, indent + 4,
+	    format_hex_bytes, session->opaque_data,
+	    vec_len (session->opaque_data));
   return s;
 }
 
@@ -334,7 +338,7 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   ip4_address_t in_l_addr, in_r_addr, out_l_addr, out_r_addr;
   u32 tenant_id = 0, in_l_port, in_r_port, out_l_port, out_r_port, pool_id;
   hanat_mapper_protocol_t proto = ~0;
-  u8 is_add = 1;
+  u8 is_add = 1, *opaque = 0;
   clib_error_t *error = 0;
   hanat_state_sync_event_t event;
   hanat_mapper_addr_pool_t *pool;
@@ -372,6 +376,9 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
 	if (unformat
 	    (line_input, "%U", unformat_hanat_mapper_protocol, &proto))
 	;
+      else
+	if (unformat (line_input, "opaque %U", unformat_hex_string, &opaque))
+	;
       else if (unformat (line_input, "del"))
 	is_add = 0;
       else
@@ -402,7 +409,8 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   event.protocol = proto;
   event.flags = 0;
   event.event_type = is_add ? HANAT_STATE_SYNC_ADD : HANAT_STATE_SYNC_DEL;
-  hanat_state_sync_event_add (&event, 0, pool->failover_index,
+  event.opaque_len = (u8) vec_len (opaque);
+  hanat_state_sync_event_add (&event, opaque, 0, pool->failover_index,
 			      vm->thread_index);
 
 done:
@@ -460,7 +468,7 @@ VLIB_CLI_COMMAND (hanat_mapper_add_session_command, static) = {
   .short_help = "hanat-mapper add session in-local <ip-addr>:<port> "
                 "in-remote <ip-addr>:<port> out-local <ip-addr>:<port> "
                 "out-remote<ip-addr>:<port> tcp|udp|icmp tenant-id <id> "
-                "pool-id <id> [del]",
+                "pool-id <id> [opaque <data>] [del]",
   .function = hanat_mapper_add_session_command_fn,
 };
 

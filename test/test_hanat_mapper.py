@@ -15,7 +15,8 @@ class Event(Packet):
                                  {1: "add", 2: "del", 3: "keepalive"}),
                    ByteEnumField("protocol", None,
                                  {0: "udp", 1: "tcp", 2: "icmp"}),
-                   ShortField("flags", 0),
+                   ByteField("flags", 0),
+                   FieldLenField("opaque_len", None, fmt='B', length_of="opaque_data"),
                    IPField("in_l_addr", None),
                    IPField("in_r_addr", None),
                    ShortField("in_l_port", None),
@@ -27,7 +28,8 @@ class Event(Packet):
                    IntField("pool_id", None),
                    IntField("tenant_id", None),
                    LongField("total_pkts", 0),
-                   LongField("total_bytes", 0)]
+                   LongField("total_bytes", 0),
+                   StrLenField("opaque_data", "", length_from=lambda pkt: pkt.opaque_len)]
 
     def extract_padding(self, s):
         return "", s
@@ -83,12 +85,13 @@ class TestHANATmapper(VppTestCase):
                        in_r_addr='1.2.3.5', in_l_port=12345, in_r_port=80,
                        out_l_addr='2.3.4.5', out_r_addr='1.2.3.5',
                        out_l_port=34567, out_r_port=80, tenant_id=1,
-                       pool_id=2),
+                       pool_id=2, opaque_data='AAAA'),
                  Event(event_type='add', protocol='tcp', in_l_addr='1.2.3.6',
                        in_r_addr='1.2.3.5', in_l_port=12345, in_r_port=80,
                        out_l_addr='2.3.4.5', out_r_addr='1.2.3.5',
                        out_l_port=34756, out_r_port=80, tenant_id=1,
-                       pool_id=2)]))
+                       pool_id=2,)]))
+
         self.pg0.add_stream(p)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -99,6 +102,7 @@ class TestHANATmapper(VppTestCase):
             sessions = self.vapi.hanat_mapper_user_session_dump(user.address,
                                                                 user.tenant_id)
             self.assertEqual(len(sessions), 1)
+            self.assertIn(sessions[0].opaque_data, ['AAAA', ''])
 
         stats = self.statistics.get_counter('/hanat-mapper/add-event-recv')
         self.assertEqual(stats[0][0], 2)
@@ -159,6 +163,7 @@ class TestHANATmapper(VppTestCase):
         cli_str += "in-remote 1.2.3.5:80 "
         cli_str += "out-local 2.3.4.5:34567 "
         cli_str += "out-remote 1.2.3.5:80 tcp tenant-id 1 pool-id 2"
+        cli_str += "opaque 4141"
         self.vapi.cli(cli_str)
         cli_str = "hanat-mapper add session "
         cli_str += "in-local 1.2.3.4:12346 "
@@ -189,6 +194,7 @@ class TestHANATmapper(VppTestCase):
             self.assertIn(event.out_l_port, [34567, 3467])
             self.assertEqual(event.tenant_id, 1)
             self.assertEqual(event.pool_id, 2)
+            self.assertIn(event.opaque_data, ['AA', ''])
 
         stats = self.statistics.get_counter('/hanat-mapper/add-event-send')
         self.assertEqual(stats[0][0], 2)

@@ -127,7 +127,7 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
       /* flush chached events */
-      hanat_state_sync_event_add (0, 1, failover - sm->failovers, 0);
+      hanat_state_sync_event_add (0, 0, 1, failover - sm->failovers, 0);
       pool_put (sm->failovers, failover);
     }
 
@@ -191,7 +191,8 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
   session =
     hanat_mapper_session_create (&nm->db, mapping, &in_r_addr,
 				 event->in_r_port, &out_r_addr,
-				 event->out_r_port, user, now, 0, 0);
+				 event->out_r_port, user, now,
+				 event->opaque_data, event->opaque_len);
   if (!session)
     {
       clib_warning ("hanat-state-sync: session_create failed");
@@ -343,8 +344,9 @@ hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b,
 }
 
 void
-hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
-			    u32 failover_index, u32 thread_index)
+hanat_state_sync_event_add (hanat_state_sync_event_t * event,
+			    u8 * opaque_data, u8 do_flush, u32 failover_index,
+			    u32 thread_index)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
   vlib_main_t *vm = sm->vlib_main;
@@ -402,6 +404,12 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event, u8 do_flush,
       offset += sizeof (*event);
       failover->state_sync_count++;
       b->current_length += sizeof (*event);
+      if (event->opaque_len)
+	{
+	  clib_memcpy_fast (b->data + offset, opaque_data, event->opaque_len);
+	  offset += event->opaque_len;
+	  b->current_length += event->opaque_len;
+	}
 
       switch (event->event_type)
 	{
@@ -447,7 +455,7 @@ hanat_state_sync_flush (vlib_main_t * vm)
   /* *INDENT-OFF* */
   pool_foreach_index (i, sm->failovers,
   ({
-    hanat_state_sync_event_add (0, 1, i, vm->thread_index);
+    hanat_state_sync_event_add (0, 0, 1, i, vm->thread_index);
   }));
   /* *INDENT-ON* */
 }

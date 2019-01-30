@@ -31,7 +31,8 @@ typedef struct
 {
   u8 event_type;
   u8 protocol;
-  u16 flags;
+  u8 flags;
+  u8 opaque_len;
   u32 in_l_addr;
   u32 in_r_addr;
   u16 in_l_port;
@@ -44,6 +45,7 @@ typedef struct
   u32 tenant_id;
   u64 total_pkts;
   u64 total_bytes;
+  u8 opaque_data[0];
 } __attribute__ ((packed)) hanat_state_sync_event_t;
 
 typedef enum
@@ -65,8 +67,8 @@ void hanat_state_sync_event_process (hanat_state_sync_event_t * event,
 				     f64 now, u32 thread_index);
 
 void hanat_state_sync_event_add (hanat_state_sync_event_t * event,
-				 u8 do_flush, u32 failover_index,
-				 u32 thread_index);
+				 u8 * opaque_data, u8 do_flush,
+				 u32 failover_index, u32 thread_index);
 
 void hanat_state_sync_flush (vlib_main_t * vm);
 

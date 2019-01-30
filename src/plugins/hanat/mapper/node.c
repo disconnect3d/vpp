@@ -254,7 +254,11 @@ hanat_state_sync_node_fn (vlib_main_t * vm,
 	    {
 	      hanat_state_sync_event_process (e0, now, thread_index);
 	      event_count0--;
-	      e0++;
+	      e0 =
+		(hanat_state_sync_event_t *) ((u8 *) e0 +
+					      sizeof
+					      (hanat_state_sync_event_t) +
+					      e0->opaque_len);
 	    }
 
 	done0:
