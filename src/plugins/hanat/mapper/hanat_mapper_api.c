@@ -363,7 +363,7 @@ send_hanat_mapper_user_session_details (hanat_mapper_session_t * session,
   hanat_mapper_mapping_t *mapping =
     pool_elt_at_index (db->mappings, session->mapping_index);
 
-  rmp = vl_msg_api_alloc (sizeof (*rmp));
+  rmp = vl_msg_api_alloc (sizeof (*rmp) + vec_len (session->opaque_data));
   clib_memset (rmp, 0, sizeof (*rmp));
   rmp->_vl_msg_id =
     ntohs (VL_API_HANAT_MAPPER_USER_SESSION_DETAILS + nm->msg_id_base);
@@ -380,6 +380,9 @@ send_hanat_mapper_user_session_details (hanat_mapper_session_t * session,
   rmp->pool_id = clib_host_to_net_u32 (mapping->pool_id);
   rmp->total_bytes = clib_host_to_net_u64 (session->total_bytes);
   rmp->total_pkts = clib_host_to_net_u64 (session->total_pkts);
+  rmp->opaque_len = (u8) vec_len (session->opaque_data);
+  clib_memcpy (rmp->opaque_data, session->opaque_data,
+	       vec_len (session->opaque_data));
   rmp->context = context;
 
   vl_api_send_msg (reg, (u8 *) rmp);

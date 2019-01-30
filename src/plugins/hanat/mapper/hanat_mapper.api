@@ -144,6 +144,8 @@ define hanat_mapper_user_session_details {
   u8 protocol;
   u64 total_bytes;
   u64 total_pkts;
+  u8 opaque_len;
+  u8 opaque_data[opaque_len];
 };
 
 /*
