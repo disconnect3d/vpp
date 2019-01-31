@@ -83,15 +83,15 @@ hanat_mapper_mapping_t *hanat_mapper_mapping_get (hanat_mapper_db_t *
 						  u32 tenant_id,
 						  u8 is_in2out);
 
-hanat_mapper_mapping_t *hanat_mapper_mappig_create (hanat_mapper_db_t *
-						    hanat_mapper_db,
-						    ip4_address_t * in_addr,
-						    u16 in_port,
-						    ip4_address_t * out_addr,
-						    u16 out_port, u8 proto,
-						    u32 pool_id,
-						    u32 tenant_id,
-						    u8 is_static);
+hanat_mapper_mapping_t *hanat_mapper_mapping_create (hanat_mapper_db_t *
+						     hanat_mapper_db,
+						     ip4_address_t * in_addr,
+						     u16 in_port,
+						     ip4_address_t * out_addr,
+						     u16 out_port, u8 proto,
+						     u32 pool_id,
+						     u32 tenant_id,
+						     u8 is_static);
 
 void hanat_mapper_mapping_free (hanat_mapper_db_t * hanat_mapper_db,
 				hanat_mapper_mapping_t * mapping,

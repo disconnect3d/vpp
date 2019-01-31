@@ -36,11 +36,11 @@ typedef struct
   {
     struct
     {
-      ip4_address_t l_addr;
-      ip4_address_t r_addr;
+      ip4_address_t src_addr;
+      ip4_address_t dst_addr;
       u32 proto:3, tenant_id:29;
-      u16 l_port;
-      u16 r_port;
+      u16 src_port;
+      u16 dst_port;
     };
     u64 as_u64[2];
   };
@@ -70,9 +70,10 @@ format_session_kvp (u8 * s, va_list * args)
 
   s =
     format (s,
-	    "local %U:%d remote %U:%d proto %U tenant-id %d session-index %llu",
-	    format_ip4_address, &k.l_addr, clib_net_to_host_u16 (k.l_port),
-	    format_ip4_address, &k.r_addr, clib_net_to_host_u16 (k.r_port),
+	    "src %U:%d dst %U:%d proto %U tenant-id %d session-index %llu",
+	    format_ip4_address, &k.src_addr,
+	    clib_net_to_host_u16 (k.src_port), format_ip4_address,
+	    &k.dst_addr, clib_net_to_host_u16 (k.dst_port),
 	    format_hanat_mapper_protocol, k.proto, k.tenant_id, v->value);
 
   return s;
@@ -193,10 +194,10 @@ hanat_mapper_mapping_get (hanat_mapper_db_t * db, ip4_address_t * addr,
 }
 
 hanat_mapper_mapping_t *
-hanat_mapper_mappig_create (hanat_mapper_db_t * db, ip4_address_t * in_addr,
-			    u16 in_port, ip4_address_t * out_addr,
-			    u16 out_port, u8 proto, u32 pool_id,
-			    u32 tenant_id, u8 is_static)
+hanat_mapper_mapping_create (hanat_mapper_db_t * db, ip4_address_t * in_addr,
+			     u16 in_port, ip4_address_t * out_addr,
+			     u16 out_port, u8 proto, u32 pool_id,
+			     u32 tenant_id, u8 is_static)
 {
   hanat_mapper_mapping_t *mapping;
   mapping_key_t mapping_key;
@@ -275,20 +276,21 @@ hanat_mapper_mapping_free (hanat_mapper_db_t * db,
 	      session_index = elt->value;
 	      if (session->mapping_index == mapping_index)
 		{
-		  session_key.l_addr.as_u32 = mapping->in_addr.as_u32;
-		  session_key.l_port = mapping->in_port;
-		  session_key.r_addr.as_u32 = session->in_r_addr.as_u32;
-		  session_key.r_port = session->in_r_port;
 		  session_key.proto = session->proto;
+
+		  session_key.src_addr.as_u32 = mapping->in_addr.as_u32;
+		  session_key.src_port = mapping->in_port;
+		  session_key.dst_addr.as_u32 = session->in_r_addr.as_u32;
+		  session_key.dst_port = session->in_r_port;
 		  session_key.tenant_id = mapping->tenant_id;
 		  s_kv.key[0] = session_key.as_u64[0];
 		  s_kv.key[1] = session_key.as_u64[1];
 		  clib_bihash_add_del_16_8 (&db->session_in2out, &s_kv, 0);
 
-		  session_key.l_addr.as_u32 = mapping->out_addr.as_u32;
-		  session_key.l_port = mapping->out_port;
-		  session_key.r_addr.as_u32 = session->out_r_addr.as_u32;
-		  session_key.r_port = session->out_r_port;
+		  session_key.src_addr.as_u32 = session->out_r_addr.as_u32;
+		  session_key.src_port = session->out_r_port;
+		  session_key.dst_addr.as_u32 = mapping->out_addr.as_u32;
+		  session_key.dst_port = mapping->out_port;
 		  session_key.tenant_id = 0;
 		  s_kv.key[0] = session_key.as_u64[0];
 		  s_kv.key[1] = session_key.as_u64[1];
@@ -321,10 +323,10 @@ hanat_mapper_session_get (hanat_mapper_db_t * db, ip4_address_t * l_addr,
   clib_bihash_16_8_t *h;
 
   h = is_in2out ? &db->session_in2out : &db->session_out2in;
-  session_key.l_addr.as_u32 = l_addr->as_u32;
-  session_key.l_port = l_port;
-  session_key.r_addr.as_u32 = r_addr->as_u32;
-  session_key.r_port = r_port;
+  session_key.src_addr.as_u32 = l_addr->as_u32;
+  session_key.src_port = l_port;
+  session_key.dst_addr.as_u32 = r_addr->as_u32;
+  session_key.dst_port = r_port;
   session_key.proto = proto;
   session_key.tenant_id = tenant_id;
   kv.key[0] = session_key.as_u64[0];
@@ -347,20 +349,21 @@ hanat_mapper_session_free (hanat_mapper_db_t * db,
 
   mapping = pool_elt_at_index (db->mappings, session->mapping_index);
 
-  session_key.l_addr.as_u32 = mapping->in_addr.as_u32;
-  session_key.l_port = mapping->in_port;
-  session_key.r_addr.as_u32 = session->in_r_addr.as_u32;
-  session_key.r_port = session->in_r_port;
   session_key.proto = session->proto;
+
+  session_key.src_addr.as_u32 = mapping->in_addr.as_u32;
+  session_key.src_port = mapping->in_port;
+  session_key.dst_addr.as_u32 = session->in_r_addr.as_u32;
+  session_key.dst_port = session->in_r_port;
   session_key.tenant_id = mapping->tenant_id;
   kv.key[0] = session_key.as_u64[0];
   kv.key[1] = session_key.as_u64[1];
   clib_bihash_add_del_16_8 (&db->session_in2out, &kv, 0);
 
-  session_key.l_addr.as_u32 = mapping->out_addr.as_u32;
-  session_key.l_port = mapping->out_port;
-  session_key.r_addr.as_u32 = session->out_r_addr.as_u32;
-  session_key.r_port = session->out_r_port;
+  session_key.src_addr.as_u32 = session->out_r_addr.as_u32;
+  session_key.src_port = session->out_r_port;
+  session_key.dst_addr.as_u32 = mapping->out_addr.as_u32;
+  session_key.dst_port = mapping->out_port;
   session_key.tenant_id = 0;
   kv.key[0] = session_key.as_u64[0];
   kv.key[1] = session_key.as_u64[1];
@@ -408,18 +411,18 @@ is_session_idle (clib_bihash_kv_16_8_t * kv, void *arg, u8 in2out)
       session_key.proto = session->proto;
       if (in2out)
 	{
-	  session_key.l_addr.as_u32 = mapping->out_addr.as_u32;
-	  session_key.l_port = mapping->out_port;
-	  session_key.r_addr.as_u32 = session->out_r_addr.as_u32;
-	  session_key.r_port = session->out_r_port;
+	  session_key.src_addr.as_u32 = mapping->out_addr.as_u32;
+	  session_key.src_port = mapping->out_port;
+	  session_key.dst_addr.as_u32 = session->out_r_addr.as_u32;
+	  session_key.dst_port = session->out_r_port;
 	  session_key.tenant_id = 0;
 	}
       else
 	{
-	  session_key.l_addr.as_u32 = mapping->in_addr.as_u32;
-	  session_key.l_port = mapping->in_port;
-	  session_key.r_addr.as_u32 = session->in_r_addr.as_u32;
-	  session_key.r_port = session->in_r_port;
+	  session_key.src_addr.as_u32 = session->in_r_addr.as_u32;
+	  session_key.src_port = session->in_r_port;
+	  session_key.dst_addr.as_u32 = mapping->in_addr.as_u32;
+	  session_key.dst_port = mapping->in_port;
 	  session_key.tenant_id = mapping->tenant_id;
 	}
       d_kv.key[0] = session_key.as_u64[0];
@@ -489,20 +492,23 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
 			      user->sessions_per_user_list_head_index,
 			      oldest_index);
 	  m = pool_elt_at_index (db->mappings, session->mapping_index);
-	  session_key.l_addr.as_u32 = m->in_addr.as_u32;
-	  session_key.l_port = m->in_port;
-	  session_key.r_addr.as_u32 = session->in_r_addr.as_u32;
-	  session_key.r_port = session->in_r_port;
+
 	  session_key.proto = session->proto;
+
+	  session_key.src_addr.as_u32 = m->in_addr.as_u32;
+	  session_key.src_port = m->in_port;
+	  session_key.dst_addr.as_u32 = session->in_r_addr.as_u32;
+	  session_key.dst_port = session->in_r_port;
+
 	  session_key.tenant_id = m->tenant_id;
 	  kv.key[0] = session_key.as_u64[0];
 	  kv.key[1] = session_key.as_u64[1];
 	  clib_bihash_add_del_16_8 (&db->session_in2out, &kv, 0);
 
-	  session_key.l_addr.as_u32 = m->out_addr.as_u32;
-	  session_key.l_port = m->out_port;
-	  session_key.r_addr.as_u32 = session->out_r_addr.as_u32;
-	  session_key.r_port = session->out_r_port;
+	  session_key.src_addr.as_u32 = session->out_r_addr.as_u32;
+	  session_key.src_port = session->out_r_port;
+	  session_key.dst_addr.as_u32 = m->out_addr.as_u32;
+	  session_key.dst_port = m->out_port;
 	  session_key.tenant_id = 0;
 	  kv.key[0] = session_key.as_u64[0];
 	  kv.key[1] = session_key.as_u64[1];
@@ -559,11 +565,12 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
   ctx.mapping_index = session->mapping_index;
   ctx.user_index = session->user_index;
 
-  session_key.l_addr.as_u32 = mapping->in_addr.as_u32;
-  session_key.l_port = mapping->in_port;
-  session_key.r_addr.as_u32 = session->in_r_addr.as_u32;
-  session_key.r_port = session->in_r_port;
   session_key.proto = session->proto;
+
+  session_key.src_addr.as_u32 = mapping->in_addr.as_u32;
+  session_key.src_port = mapping->in_port;
+  session_key.dst_addr.as_u32 = session->in_r_addr.as_u32;
+  session_key.dst_port = session->in_r_port;
   session_key.tenant_id = mapping->tenant_id;
   kv.key[0] = session_key.as_u64[0];
   kv.key[1] = session_key.as_u64[1];
@@ -571,10 +578,10 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
   clib_bihash_add_or_overwrite_stale_16_8 (&db->session_in2out, &kv,
 					   is_session_idle_in2out, &ctx);
 
-  session_key.l_addr.as_u32 = mapping->out_addr.as_u32;
-  session_key.l_port = mapping->out_port;
-  session_key.r_addr.as_u32 = session->out_r_addr.as_u32;
-  session_key.r_port = session->out_r_port;
+  session_key.src_addr.as_u32 = session->out_r_addr.as_u32;
+  session_key.src_port = session->out_r_port;
+  session_key.dst_addr.as_u32 = mapping->out_addr.as_u32;
+  session_key.dst_port = mapping->out_port;
   session_key.tenant_id = 0;
   kv.key[0] = session_key.as_u64[0];
   kv.key[1] = session_key.as_u64[1];

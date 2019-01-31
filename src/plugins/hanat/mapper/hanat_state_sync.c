@@ -177,9 +177,9 @@ hanat_state_sync_recv_add (hanat_state_sync_event_t * event, f64 now,
 					  &out_l_addr, event->out_l_port);
 
       mapping =
-	hanat_mapper_mappig_create (&nm->db, &in_l_addr, event->in_l_port,
-				    &out_l_addr, event->out_l_port,
-				    event->protocol, pool_id, tenant_id, 0);
+	hanat_mapper_mapping_create (&nm->db, &in_l_addr, event->in_l_port,
+				     &out_l_addr, event->out_l_port,
+				     event->protocol, pool_id, tenant_id, 0);
 
       if (!mapping)
 	{
