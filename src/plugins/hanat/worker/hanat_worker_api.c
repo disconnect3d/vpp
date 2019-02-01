@@ -49,18 +49,19 @@
 #undef vl_api_version
 
 static void
-vl_api_hanat_worker_enable_t_handler(vl_api_hanat_worker_enable_t *mp)
+vl_api_hanat_worker_enable_t_handler (vl_api_hanat_worker_enable_t * mp)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   vl_api_hanat_worker_enable_reply_t *rmp;
   int rv = 0;
 
-  rv = hanat_worker_enable(ntohs(mp->udp_port));
+  rv = hanat_worker_enable (ntohs (mp->udp_port));
   REPLY_MACRO (VL_API_HANAT_WORKER_ENABLE_REPLY);
 }
 
 static void
-vl_api_hanat_worker_interface_add_del_t_handler(vl_api_hanat_worker_interface_add_del_t *mp)
+  vl_api_hanat_worker_interface_add_del_t_handler
+  (vl_api_hanat_worker_interface_add_del_t * mp)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
 
@@ -69,19 +70,22 @@ vl_api_hanat_worker_interface_add_del_t_handler(vl_api_hanat_worker_interface_ad
   vl_api_hanat_worker_interface_add_del_reply_t *rmp;
 
   VALIDATE_SW_IF_INDEX (mp);
-  rv = hanat_worker_interface_add_del (sw_if_index, mp->is_add, ntohl(mp->mode));
+  rv =
+    hanat_worker_interface_add_del (sw_if_index, mp->is_add,
+				    ntohl (mp->mode));
   BAD_SW_IF_INDEX_LABEL;
   REPLY_MACRO (VL_API_HANAT_WORKER_INTERFACE_ADD_DEL_REPLY);
 }
 
 static void
-vl_api_hanat_worker_interfaces_t_handler(vl_api_hanat_worker_interfaces_t *mp)
+vl_api_hanat_worker_interfaces_t_handler (vl_api_hanat_worker_interfaces_t *
+					  mp)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   vl_api_hanat_worker_interfaces_reply_t *rmp;
   hanat_interface_t *interface;
   int i = 0, rv = 0;
-  int len = pool_elts(hm->interfaces) * sizeof(*hm->interfaces);
+  int len = pool_elts (hm->interfaces) * sizeof (*hm->interfaces);
 
   /* *INDENT-OFF* */
   REPLY_MACRO3(VL_API_HANAT_WORKER_INTERFACES_REPLY, len,
@@ -114,7 +118,7 @@ vl_api_hanat_worker_mapper_add_del_t_handler(vl_api_hanat_worker_mapper_add_del_
   ({
     rmp->mapper_index = htonl(mapper_index);
   }));
-  /* *INDENT ON* */		  
+  /* *INDENT ON* */
 }
 
 static void

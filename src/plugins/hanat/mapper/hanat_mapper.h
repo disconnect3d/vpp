@@ -88,6 +88,9 @@ typedef struct hanat_mapper_main_s
 
   hanat_mapper_db_t db;
 
+  /* request buffers */
+  u32 **request_buffers;
+
   /* convenience */
   vlib_main_t *vlib_main;
   vnet_main_t *vnet_main;

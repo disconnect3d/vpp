@@ -179,6 +179,7 @@ hanat_mapper_free_out_addr_and_port (u32 pool_id,
 static clib_error_t *
 hanat_mapper_init (vlib_main_t * vm)
 {
+  vlib_thread_main_t *tm = vlib_get_thread_main ();
   hanat_mapper_main_t *nm = &hanat_mapper_main;
   clib_error_t *error = 0;
 
@@ -197,6 +198,9 @@ hanat_mapper_init (vlib_main_t * vm)
 
   hanat_mapper_db_init (&nm->db, 100);
   hanat_state_sync_init (vm);
+
+  vec_validate_aligned (nm->request_buffers, tm->n_vlib_mains - 1,
+			CLIB_CACHE_LINE_BYTES);
 
   error = hanat_mapper_api_init (vm, nm);
 
@@ -327,9 +331,9 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 	return rv;
 
       mapping =
-	hanat_mapper_mappig_create (&nm->db, local_addr, local_port,
-				    external_addr, external_port, protocol,
-				    pool_id, tenant_id, 1);
+	hanat_mapper_mapping_create (&nm->db, local_addr, local_port,
+				     external_addr, external_port, protocol,
+				     pool_id, tenant_id, 1);
       if (!mapping)
 	return VNET_API_ERROR_UNSPECIFIED;
     }
