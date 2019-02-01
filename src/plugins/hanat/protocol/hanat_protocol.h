@@ -81,7 +81,7 @@ typedef struct {
 } __attribute__((packed)) hanat_option_session_request_t;
 
 typedef struct {
-  u8 type;		/* Session reply */
+  u8 type;		/* Session binding */
   u8 length;
   u32 session_id;
   hanat_instructions_t instructions;
