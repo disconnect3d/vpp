@@ -54,6 +54,11 @@ typedef struct {
  * - Separate session pool
  */
 
+typedef struct {
+  u32 vni;
+  ip4_address_t src;
+} hanat_gre_data_t;
+
 /* Session cache entries */
 typedef struct {
   /* What to translate to */
@@ -70,6 +75,8 @@ typedef struct {
   //  vlib_combined_counter_t counter;
   u32 buffer;
   f64 last_heard;
+  ip4_address_t gre;
+  bool tunnel;
 } hanat_session_entry_t;
 
 typedef struct {
@@ -103,8 +110,8 @@ typedef struct
 {
   hanat_pool_entry_t *pools;
 
-  /* Vector by VRF of stable hash buckets */
-  u32 **lb_buckets;
+  /* Vector of stable hash buckets */
+  u32 *lb_buckets;
   u32 n_buckets;
 
   /* LPM */
@@ -124,9 +131,12 @@ typedef struct {
 
   u32 ip4_lookup_node_index;
   u32 hanat_worker_node_index;
+  u32 hanat_gre4_input_node_index;
 
   /* API message ID base */
   u16 msg_id_base;
+
+  void *gre_template;
 } hanat_worker_main_t;
 
 extern hanat_worker_main_t hanat_worker_main;
@@ -143,16 +153,21 @@ clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
 void hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
 			       u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
-			       u16 sport, u16 dport);
+			       u16 sport, u16 dport, ip4_address_t gre);
 
-hanat_session_t *hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi);
+hanat_session_t *hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi, bool tunnel);
+int hanat_worker_cache_clear(void);
+
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
-int hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[]);
-int hanat_worker_enable(u16 udp_port);
+int hanat_worker_mapper_buckets(u32 n, u32 mapper_index[]);
+int hanat_worker_enable(u16 udp_port, bool gre, ip4_address_t *src);
 
 void hanat_mapper_table_init(hanat_pool_t *db);
 void hanat_lpm_64_add (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen, u32 value);
 void hanat_lpm_64_delete (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen);
 u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, u32 fib_index, u32 address);
+
+u32 hanat_get_interface_mode(u32 sw_if_index);
+
 #endif

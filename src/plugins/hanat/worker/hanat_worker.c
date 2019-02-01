@@ -19,12 +19,14 @@
 #include <vnet/fib/fib_table.h>
 #include <vppinfra/pool.h>
 #include <vnet/udp/udp_packet.h>
+#include <vnet/gre/packet.h>
 #include <vnet/udp/udp.h>
 
 #include "hanat_worker_db.h"
 
 hanat_worker_main_t hanat_worker_main;
 extern vlib_node_registration_t hanat_worker_slow_input_node;
+extern vlib_node_registration_t hanat_gre4_input_node;
 
 static clib_error_t *
 hanat_worker_init (vlib_main_t * vm)
@@ -38,9 +40,11 @@ hanat_worker_init (vlib_main_t * vm)
   hm->ip4_lookup_node_index = node->index;
   node = vlib_get_node_by_name (vm, (u8 *) "hanat-worker");
   hm->hanat_worker_node_index = node->index;
+  node = vlib_get_node_by_name (vm, (u8 *) "hanat-gre4-input");
+  hm->hanat_gre4_input_node_index = node->index;
 
   hanat_mapper_table_init(&hm->pool_db);
-  hm->pool_db.n_buckets = 1024;
+  hm->pool_db.n_buckets = 0;
 
   /* Init API */
   return hanat_worker_api_init(vm, hm);
@@ -68,9 +72,8 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
     pool_get (hm->interfaces, interface);
     interface->sw_if_index = sw_if_index;
     interface->mode = mode;
-    u32 index = interface - hm->interfaces;
-    vec_validate(hm->interface_by_sw_if_index, sw_if_index);
-    hm->interface_by_sw_if_index[sw_if_index] = index;
+    vec_validate_init_empty(hm->interface_by_sw_if_index, sw_if_index, ~0);
+    hm->interface_by_sw_if_index[sw_if_index] = interface - hm->interfaces;
   } else {
     if (!interface)
       return VNET_API_ERROR_NO_SUCH_ENTRY;
@@ -131,10 +134,28 @@ hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry)
   return 0;
 }
 
+/*
+ * Nuke the whole cache
+ */
+int
+hanat_worker_cache_clear (void)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
+  /* Delete hash */
+  clib_bihash_free_16_8(&hm->db.cache);
+  hanat_db_init(&hm->db, 1024, 2000000);
+  /* Delete pool */
+  pool_free(hm->db.sessions);
+
+
+  return 0;
+}
+
 void
 hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
 			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
-			  u16 sport, u16 dport)
+			  u16 sport, u16 dport, ip4_address_t gre)
 {
   /* Update session entry */
   hanat_session_key_t *key = &s->key;
@@ -145,6 +166,9 @@ hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
   memcpy(&entry->post_da, &da->as_u32, 4);
   entry->post_sp = sport; /* Network byte order */
   entry->post_dp = dport; /* Network byte order */
+
+  if (gre.as_u32)
+    entry->gre = gre;
 
   ip_csum_t c = l3_checksum_delta(instructions, key->sa, entry->post_sa, key->da, entry->post_da);
   if (key->proto == IP_PROTOCOL_ICMP) /* ICMP checksum does not include pseudoheader */
@@ -190,34 +214,60 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 
  * Vector of VRFs of pointers to bucket vector
  */
 int
-hanat_worker_mapper_buckets(u32 fib_index, u32 n, u32 mapper_index[])
+hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   int i;
-  u32 *b = 0;
+
   /* Replace stable hash */
-  if (hm->pool_db.lb_buckets && vec_len(hm->pool_db.lb_buckets) >= fib_index &&
-      hm->pool_db.lb_buckets[fib_index]) {
-    vec_free(hm->pool_db.lb_buckets[fib_index]);
-  }
-  vec_validate_init_empty (hm->pool_db.lb_buckets, fib_index, 0);
-  vec_validate(b, n);
+  if (hm->pool_db.lb_buckets && vec_len(hm->pool_db.lb_buckets))
+    vec_free(hm->pool_db.lb_buckets);
 
+  vec_validate (hm->pool_db.lb_buckets, n);
   for (i = 0; i < n; i++) {
-    b[i] = ntohl(mapper_index[i]);
+    hm->pool_db.lb_buckets[i] = ntohl(mapper_index[i]);
   }
-
-  hm->pool_db.lb_buckets[fib_index] = b;
+  hm->pool_db.n_buckets = n;
 
   return 0;
 }
 
 int
-hanat_worker_enable(u16 udp_port)
+hanat_worker_enable(u16 udp_port, bool gre, ip4_address_t *src)
 {
   vlib_main_t * vm = vlib_get_main();
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
   udp_register_dst_port (vm, udp_port, hanat_worker_slow_input_node.index, 1 /*is_ip4 */);
 
+  if (gre) {
+    int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
+    ip4_header_t *ip = clib_mem_alloc(header_len);
+
+    ip->ip_version_and_header_length = 0x45;
+    ip->flags_and_fragment_offset = 0;
+    ip->tos = 0;
+    ip->fragment_id = 0;
+    ip->ttl = 64;
+    ip->protocol = IP_PROTOCOL_GRE;
+    ip->src_address.as_u32 = src->as_u32;
+    ip->dst_address.as_u32 = 0;
+
+    gre_header_t *h = (gre_header_t *) (ip+1);
+    h->protocol = htons(GRE_PROTOCOL_ip4);
+    h->flags_and_version = htons (GRE_FLAGS_KEY);
+
+    hm->gre_template = ip;
+    hm->udp_port = udp_port;
+    ip4_register_protocol(IP_PROTOCOL_GRE, hanat_gre4_input_node.index);
+  }
+
+  return 0;
+}
+
+int hanat_worker_disable(void)
+{
+  // Not yet implemented
   return 0;
 }
 

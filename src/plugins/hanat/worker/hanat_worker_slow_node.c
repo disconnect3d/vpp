@@ -19,6 +19,7 @@
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/udp/udp_packet.h>
 #include <vnet/udp/udp.h>
+#include <vnet/gre/packet.h>
 #ifndef HANAT_TEST
 #include <vnet/fib/fib_types.h>
 #include <vnet/fib/fib_table.h>
@@ -92,33 +93,36 @@ format_hanat_worker_slow_trace (u8 * s, va_list * args)
   return s;
 }
 
-static vl_api_hanat_worker_if_mode_t
-get_interface_mode(u32 sw_if_index)
+u32
+hanat_get_interface_mode(u32 sw_if_index)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 index = hm->interface_by_sw_if_index[sw_if_index];
+  if (index == ~0) return ~0;
   hanat_interface_t *interface = pool_elt_at_index(hm->interfaces, index);
   return interface->mode;
 }
 
+/*
+ * FIB index is only used for out2in traffic. The in2out buckets are shared across all VNIs
+ */
 static u32
-find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, bool *in2out)
+find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, u32 mode)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 mid = ~0;
-  vl_api_hanat_worker_if_mode_t mode = get_interface_mode(sw_if_index);
 
   if (mode == HANAT_WORKER_IF_OUTSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
     mid = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(ip->dst_address.as_u32));
-    *in2out = false;
   }
   if (mode == HANAT_WORKER_IF_INSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
     if (mid == ~0) {
+      if (vec_len(hm->pool_db.lb_buckets) == 0)
+	  return ~0;
       u32 i = ip->src_address.as_u32 % hm->pool_db.n_buckets;
-      mid = hm->pool_db.lb_buckets[fib_index][i];
-      *in2out = true;
+      mid = hm->pool_db.lb_buckets[i];
     }
   }
   return mid;
@@ -145,8 +149,9 @@ give_to_frame(u32 node_index, u32 bi)
 }
 
 static int
-send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b,
-			    hanat_pool_entry_t *pe, hanat_session_t *session, bool in2out)
+send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
+			    hanat_pool_entry_t *pe, hanat_session_t *session, u32 mode,
+			    ip4_address_t gre)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u16 len;
@@ -172,7 +177,6 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   ip->protocol = IP_PROTOCOL_UDP;
   ip->src_address.as_u32 = pe->src.ip4.as_u32;
   ip->dst_address.as_u32 = pe->mapper.ip4.as_u32;
-  //  ip->checksum = ip4_header_checksum (ip);
   len = sizeof(ip4_header_t);
 
   udp_header_t *udp = (udp_header_t *) (ip + 1);
@@ -185,8 +189,9 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   len += sizeof (hanat_header_t);
 
   hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
+  int session_request_len = (gre.as_u32 > 0) ? sizeof(hanat_option_session_request_t) + 4 : sizeof(hanat_option_session_request_t);
   req->type = HANAT_SESSION_REQUEST;
-  req->length = sizeof(hanat_option_session_request_t);
+  req->length = session_request_len;
   req->session_id = htonl(hanat_get_session_index(session));
   req->pool_id = htonl(pe->pool_id);
 
@@ -195,10 +200,11 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 fib_index, vlib_buffer_t *org_b
   req->desc.sp = session->key.sp;
   req->desc.dp = session->key.dp;
   req->desc.proto = session->key.proto;
-  req->desc.vni = htonl(fib_index);
-  req->desc.in2out = in2out;
-
-  len += sizeof (hanat_option_session_request_t);
+  req->desc.vni = htonl(vni) >> 8;
+  req->desc.in2out = mode == (HANAT_WORKER_IF_INSIDE || HANAT_WORKER_IF_DUAL) ? true : false;
+  if (gre.as_u32)
+    memcpy(req->opaque_data, &gre.as_u32, 4);
+  len += session_request_len;
 
   ip->length = htons(len);
   ip->checksum = ip4_header_checksum (ip);
@@ -235,9 +241,9 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	{
 	  u32 bi0;
 	  vlib_buffer_t *b0;
-	  u32 next0, sw_if_index0, fib_index0;
+	  u32 next0, sw_if_index0, vni0;
 	  ip4_header_t *ip0;
-	  bool in2out;
+	  ip4_address_t gre0 = {0};
 
 	  /* speculatively enqueue b0 to the current next frame */
 	  bi0 = from[0];
@@ -249,17 +255,31 @@ hanat_worker_slow_output (vlib_main_t * vm,
 
 	  ip0 = (ip4_header_t *) vlib_buffer_get_current (b0);
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
-	  fib_index0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
-							    sw_if_index0);
-	  u32 mid0 = find_mapper(sw_if_index0, fib_index0, ip0, &in2out);
+	  u32 mode0 = hanat_get_interface_mode(sw_if_index0);
+	  bool tunnel = false;
+	  if (mode0 == ~0) {
+	    hanat_gre_data_t *metadata = (hanat_gre_data_t *)vnet_buffer2(b0);
+	    vni0 = metadata->vni;
+	    gre0 = metadata->src;
+	    mode0 = HANAT_WORKER_IF_INSIDE;
+	    tunnel = true;
+	  } else {
+	    vni0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
+							sw_if_index0);
+	  }
+
+	  u32 mid0 = find_mapper(sw_if_index0, vni0, ip0, mode0);
 	  if (mid0 != ~0) {
 	    hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
 	    if (pe) {
-	      hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, fib_index0, ip0, bi0);
-	      send_hanat_protocol_request(vm, fib_index0, b0, pe, s, in2out);
+	      hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel);
+	      send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
+	      if (tunnel) { /* Reset buffer to be able to play it back to hanat_gre4_input */
+		int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
+		vlib_buffer_advance(b0, -header_len);
+	      }
 	    }
 	  } else {
-	    clib_warning("Could not find mapper %d", mid0);
 	    b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
 	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
 	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
@@ -356,13 +376,19 @@ hanat_worker_slow_input (vlib_main_t * vm,
 		clib_warning("Could not find session %d", ntohl(sp->session_id));
 		goto done0;
 	      }
-
+	      ip4_address_t gre = {0};
+	      if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
+		memcpy(&gre, sp->opaque_data, 4);
+		
 	      hanat_worker_cache_update(s, ntohl(sp->instructions), ntohl(sp->fib_index),
-					&sp->sa, &sp->da, sp->sp, sp->dp);
+					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
 
 	      /* Put cached packet back to fast worker node */
 	      if (s->entry.buffer) {
-		give_to_frame(hm->hanat_worker_node_index, s->entry.buffer);
+		if (s->entry.tunnel)
+		  give_to_frame(hm->hanat_gre4_input_node_index, s->entry.buffer);
+		else
+		  give_to_frame(hm->hanat_worker_node_index, s->entry.buffer);
 		s->entry.buffer = 0;
 	      }
 	    }

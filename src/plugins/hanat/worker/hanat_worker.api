@@ -79,7 +79,6 @@ define hanat_worker_mapper_add_del_reply {
 autoreply define hanat_worker_mapper_buckets {
   u32 client_index;
   u32 context;
-  u32 fib_index;
   u32 mapper_index[1024];
 };
 
@@ -134,6 +133,11 @@ define hanat_worker_cache_details {
   u16 post_dp;
 };
 
+autoreply define hanat_worker_cache_clear {
+  u32 client_index;
+  u32 context;
+};
+
 /*
  * Enable worker
  */
@@ -141,5 +145,7 @@ autoreply define hanat_worker_enable {
   u32 client_index;
   u32 context;
   u16 udp_port;
+  bool gre;
+  vl_api_ip4_address_t gre_src;
   // timers
 };

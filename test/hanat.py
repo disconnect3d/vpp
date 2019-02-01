@@ -24,12 +24,16 @@ class HANATSessionRequest(_HANATGuessPayload, Packet):
                     ThreeBytesField("VNI", 0),
                     ShortField("sport", 0),
                     ShortField("dport", 0),
-                    ByteField("in2out", 0)]
+                    ByteField("in2out", 0),
+                    ConditionalField(
+                        IPField("gre", '0.0.0.0'),
+                        lambda pkt: pkt.len == 31),
+                    ]
 
 class HANATSessionBinding(_HANATGuessPayload, Packet):
     name = "HANAT Session Binding"
     fields_desc = [ ByteField("type", 1),
-                    ByteField("len", 20),
+                    ByteField("len", 26),
                     IntField("session_id", 0),
                     FlagsField("instr", 0, 32,
                                ['SRC', 'SRC_PORT',
@@ -38,7 +42,12 @@ class HANATSessionBinding(_HANATGuessPayload, Packet):
                     IPField("src", '0.0.0.0'),
                     IPField("dst", '0.0.0.0'),
                     ShortField("sport", 0),
-                    ShortField("dport", 0)]
+                    ShortField("dport", 0),
+                    ConditionalField(
+                        IPField("gre", '0.0.0.0'),
+                        lambda pkt: pkt.len == 30),
+    ]
+
 
 class HANATSessionRefresh(_HANATGuessPayload, Packet):
     name = "HANAT Session Refresh"

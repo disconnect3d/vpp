@@ -2,7 +2,7 @@
 """HANAT Worker functional tests"""
 
 import unittest
-from scapy.layers.inet import Ether, IP, UDP, TCP
+from scapy.layers.inet import Ether, IP, UDP, TCP, GRE
 from scapy.all import fragment, RandShort, bind_layers, Packet
 from framework import VppTestCase, VppTestRunner
 from vpp_ip import DpoProto
@@ -10,6 +10,9 @@ from vpp_ip_route import VppIpRoute, VppRoutePath, VppIpTable
 from util import reassemble4
 from vpp_papi import VppEnum
 from hanat import *
+
+
+hanat_configured=False
 
 def session_binding_reply(packet, interface):
     session_id = packet[HANATSessionRequest].session_id
@@ -46,7 +49,13 @@ def get_binding_reply(packet, post):
     # Send session binding
     udp = UDP(sport=1234, dport=1234)
 
-    hb = (HANATSessionBinding(src=sa, dst=da, sport=sp, dport=dp, instr=i, session_id=session_id))
+    if 'gre' in post:
+        hb = (HANATSessionBinding(src=sa, dst=da, sport=sp, dport=dp, instr=i, session_id=session_id,
+                                  gre=post['gre'], VNI=post['vni'], len=30))
+    else:
+        vni = post['vni'] if 'vni' in post else 0
+        hb = (HANATSessionBinding(src=sa, dst=da, sport=sp, dport=dp, instr=i, session_id=session_id, VNI=vni))
+
     return (udp / HANAT() / hb)
 
 def get_reply(packet, post):
@@ -75,14 +84,26 @@ def get_reply(packet, post):
     else:
         raise NotImplemented
 
-    reply[IP].ttl -= 1
     return reply
 
+def get_packet_layers(packet):
+    counter = 0
+    while True:
+        layer = packet.getlayer(counter)
+        if layer is None:
+            break
+        yield layer
+        counter += 1
 
 class TestHANAT(VppTestCase):
     """ HANAT Worker Test Case """
 
+
     def validate(self, rx, expected):
+        for i, layer in enumerate(get_packet_layers(expected)):
+            if layer.name == 'IP':
+                expected[i].ttl = rx[i].ttl
+                expected[i].id = rx[i].id
         self.assertEqual(rx, expected.__class__(expected))
 
     @classmethod
@@ -108,12 +129,12 @@ class TestHANAT(VppTestCase):
                 i.unconfig_ip4()
                 i.admin_down()
 
-    def test_hanat(self):
-        """ hanat_worker basic test """
+    def hanat_configure(self):
+        global hanat_configured
 
-        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234)
-        self.assertEqual(rv.retval, 0)
-
+        if hanat_configured:
+            return
+        hanat_configured=True
         # Configure the mapper for a pool
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
                                                         pool_id=0,
@@ -136,13 +157,6 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_mapper_buckets(mapper_index=buckets)
         print('RV', rv)
 
-        # Enable hanat-worker input feature
-        mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
-        rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,
-                                                           is_add=True,
-                                                           mode=mode)
-        self.assertEqual(rv.retval, 0)
-
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE
         rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg1.sw_if_index,
                                                            is_add=True,
@@ -155,6 +169,105 @@ class TestHANAT(VppTestCase):
                                          self.pg1.sw_if_index)])
 
         route.add_vpp_config()
+
+    def test_hanat_gre(self):
+        """ hanat_worker GRE test """
+
+        self.hanat_configure()
+        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234, gre=True, gre_src=self.pg0.local_ip4)
+        self.assertEqual(rv.retval, 0)
+       
+        rv = self.vapi.papi.hanat_worker_cache_clear()
+        self.assertEqual(rv.retval, 0)
+
+
+        tests = [
+            {'name': 'Simple TCP SYN', 'in2out': True,
+             'src': self.pg0.remote_ip4, 'dst': '8.8.8.9', 'protocol': 'TCP', 'sport': 40002, 'dport': 5555, 'vni': 123,
+             'post': {'instr': ['SRC', 'SRC_PORT'], 'post_sa': '130.67.1.1', 'post_sp': 11, 'vni': 0}},
+            {'name': 'Simple TCP SYN reverse', 'in2out': False,
+             'src': '8.8.8.9', 'dst': '130.67.1.1', 'protocol': 'TCP', 'sport': 5555, 'dport': 11,
+             'post': {'instr': ['DST','DST_PORT'], 'post_da': self.pg0.remote_ip4, 'post_dp': 40002,
+                      'gre': self.pg0.remote_ip4, 'vni': 123}},
+        ]
+
+        p_ether_pg0 = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
+        p_ether_pg1 = Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac)
+        p_ether_pg2 = Ether(dst=self.pg2.local_mac, src=self.pg2.remote_mac)
+        p_ip_pg0 = IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4)
+        p_ip_pg0_return = IP(src=self.pg0.local_ip4, dst=self.pg0.remote_ip4)
+        p_ip_pg1 = IP(src=self.pg1.remote_ip4, dst=self.pg1.local_ip4)
+        p_ip_pg2 = IP(src=self.pg2.remote_ip4, dst=self.pg2.local_ip4)
+        
+        for t in tests:
+            print('Running: ' + t['name'])
+            ip = IP(src=t['src'], dst=t['dst'])
+            if t['protocol'] == 'TCP':
+                l4 = TCP(sport=t['sport'], dport=t['dport'])
+            elif t['protocol'] == 'UDP':
+                l4 = UDP(sport=t['sport'], dport=t['dport'])
+            elif t['protocol'] == 'ICMP':
+                l4 = ICMP(id=t['identifier'])
+            else:
+                raise NotImplemented()
+
+            # Send packet in inside interface, expect session request
+            if t['in2out']:
+                tx_interface = self.pg0
+                rx_interface = self.pg1
+                p = p_ether_pg0 / p_ip_pg0 / GRE(key_present=1,key=t['vni']) / ip / l4
+            else:
+                tx_interface = self.pg1
+                rx_interface = self.pg0
+                p = p_ether_pg1 / ip / l4
+
+            print('SENDING PACKET')
+            p.show2()
+            rx = self.send_and_expect(tx_interface, p*1, self.pg2)[0] # Or rx_interface
+            if rx.getlayer(HANAT):
+                print("SESSION")
+                rx.show2()
+                udp_binding_reply = get_binding_reply(rx, post=t['post'])
+                binding_reply = p_ether_pg2 / p_ip_pg2 / udp_binding_reply
+                binding_reply.show2()
+
+                # Send binding reply and expect data packet
+                rx = self.send_and_expect(self.pg2, binding_reply*1, rx_interface)[0]
+            print("HERE SHOULD BE THE DATA PACKET")
+            rx.show2()
+            if t['in2out']:
+                reply = get_reply(p[3], t['post'])
+            else:
+                r = get_reply(p[1], t['post'])
+                reply = p_ip_pg0_return / GRE(key_present=1,key=t['post']['vni']) / r
+
+            self.validate(rx[1], reply)
+
+            # Send packet through cached entry
+            print("TRYING TO SEND THROUGH CACHE")
+            p.show2()
+            rx = self.send_and_expect(tx_interface, p*1, rx_interface)[0] # Or rx_interface
+            print('RECEIVED AFTER FORWARDING')
+            rx.show2()
+            self.validate(rx[1], reply)
+
+
+    def test_hanat(self):
+        """ hanat_worker basic test """
+
+        self.hanat_configure()
+
+        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234)
+        self.assertEqual(rv.retval, 0)
+
+        rv = self.vapi.papi.hanat_worker_cache_clear()
+        self.assertEqual(rv.retval, 0)
+
+        # Enable hanat-worker input feature
+        mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
+        rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,
+                                                           is_add=True, mode=mode)
+        self.assertEqual(rv.retval, 0)
 
         # key = {'sa': self.pg0.remote_ip4,
         #        'da': '8.8.8.8',
@@ -179,8 +292,6 @@ class TestHANAT(VppTestCase):
         # Generate input packet, send input packet
         # Respond to session requests
         # Verify output packets
-        # Table for session entries, or create those from tests?
-
         tests = [
             {'name': 'Simple TCP SYN', 'in2out': True,
              'src': self.pg0.remote_ip4, 'dst': '8.8.8.9', 'protocol': 'TCP', 'sport': 40002, 'dport': 5555,
@@ -258,6 +369,12 @@ class TestHANAT(VppTestCase):
         #rv = self.vapi.papi.hanat_worker_cache_dump()
         #print('RV', rv)
         #self.assertEqual(1, len(rv))
+
+        mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
+        rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,
+                                                           is_add=False, mode=mode)
+        self.assertEqual(rv.retval, 0)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)

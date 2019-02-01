@@ -55,7 +55,7 @@ vl_api_hanat_worker_enable_t_handler(vl_api_hanat_worker_enable_t *mp)
   vl_api_hanat_worker_enable_reply_t *rmp;
   int rv = 0;
 
-  rv = hanat_worker_enable(ntohs(mp->udp_port));
+  rv = hanat_worker_enable(ntohs(mp->udp_port), mp->gre, (ip4_address_t *)&mp->gre_src);
   REPLY_MACRO (VL_API_HANAT_WORKER_ENABLE_REPLY);
 }
 
@@ -146,13 +146,25 @@ vl_api_hanat_worker_cache_add_t_handler(vl_api_hanat_worker_cache_add_t *mp)
 }
 
 static void
+vl_api_hanat_worker_cache_clear_t_handler(vl_api_hanat_worker_cache_clear_t *mp)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  vl_api_hanat_worker_cache_clear_reply_t *rmp;
+  int rv = 0;
+
+  rv = hanat_worker_cache_clear();
+
+  REPLY_MACRO (VL_API_HANAT_WORKER_CACHE_ADD_REPLY);
+}
+
+static void
 vl_api_hanat_worker_mapper_buckets_t_handler(vl_api_hanat_worker_mapper_buckets_t *mp)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   vl_api_hanat_worker_mapper_buckets_reply_t *rmp;
   int rv = 0;
 
-  rv = hanat_worker_mapper_buckets(ntohl(mp->fib_index), hm->pool_db.n_buckets, mp->mapper_index);
+  rv = hanat_worker_mapper_buckets(1024, mp->mapper_index);
   REPLY_MACRO (VL_API_HANAT_WORKER_MAPPER_BUCKETS_REPLY);
 }
 
@@ -204,6 +216,7 @@ _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\
 _(HANAT_WORKER_CACHE_ADD, hanat_worker_cache_add)			\
 _(HANAT_WORKER_CACHE_DUMP, hanat_worker_cache_dump)			\
+_(HANAT_WORKER_CACHE_CLEAR, hanat_worker_cache_clear)			\
 _(HANAT_WORKER_MAPPER_BUCKETS, hanat_worker_mapper_buckets)
 
 /* Set up the API message handling tables */
