@@ -174,7 +174,7 @@ class TestHANAT(VppTestCase):
         """ hanat_worker GRE test """
 
         self.hanat_configure()
-        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234, gre=True, gre_src=self.pg0.local_ip4)
+        rv = self.vapi.papi.hanat_worker_enable(udp_port=1234, gre_src=self.pg0.local_ip4)
         self.assertEqual(rv.retval, 0)
        
         rv = self.vapi.papi.hanat_worker_cache_clear()

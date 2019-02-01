@@ -55,7 +55,7 @@ vl_api_hanat_worker_enable_t_handler (vl_api_hanat_worker_enable_t * mp)
   vl_api_hanat_worker_enable_reply_t *rmp;
   int rv = 0;
 
-  rv = hanat_worker_enable(ntohs(mp->udp_port), mp->gre, (ip4_address_t *)&mp->gre_src);
+  rv = hanat_worker_enable(ntohs(mp->udp_port), (ip4_address_t *)&mp->gre_src);
   REPLY_MACRO (VL_API_HANAT_WORKER_ENABLE_REPLY);
 }
 

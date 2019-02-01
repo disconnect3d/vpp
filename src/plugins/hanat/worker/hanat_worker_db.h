@@ -161,7 +161,7 @@ int hanat_worker_cache_clear(void);
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 n, u32 mapper_index[]);
-int hanat_worker_enable(u16 udp_port, bool gre, ip4_address_t *src);
+int hanat_worker_enable(u16 udp_port, ip4_address_t *src);
 
 void hanat_mapper_table_init(hanat_pool_t *db);
 void hanat_lpm_64_add (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen, u32 value);

@@ -233,14 +233,14 @@ hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
 }
 
 int
-hanat_worker_enable(u16 udp_port, bool gre, ip4_address_t *src)
+hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src)
 {
   vlib_main_t * vm = vlib_get_main();
   hanat_worker_main_t *hm = &hanat_worker_main;
 
   udp_register_dst_port (vm, udp_port, hanat_worker_slow_input_node.index, 1 /*is_ip4 */);
 
-  if (gre) {
+  if (gre_src->as_u32 > 0) {
     int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
     ip4_header_t *ip = clib_mem_alloc(header_len);
 
@@ -250,7 +250,7 @@ hanat_worker_enable(u16 udp_port, bool gre, ip4_address_t *src)
     ip->fragment_id = 0;
     ip->ttl = 64;
     ip->protocol = IP_PROTOCOL_GRE;
-    ip->src_address.as_u32 = src->as_u32;
+    ip->src_address.as_u32 = gre_src->as_u32;
     ip->dst_address.as_u32 = 0;
 
     gre_header_t *h = (gre_header_t *) (ip+1);
