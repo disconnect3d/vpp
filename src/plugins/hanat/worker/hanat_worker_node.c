@@ -29,7 +29,7 @@
  */
 #define foreach_hanat_worker_next		\
   _(DROP, "error-drop")				\
-  _(SLOW_PATH, "hanat-worker-slow-output")	\
+  _(SLOW_FEATURE, "hanat-worker-slow-feature")	\
   _(IP4_LOOKUP, "ip4-lookup")
 
 typedef enum {
@@ -44,7 +44,7 @@ typedef enum {
  */
 #define foreach_hanat_gre4_input_next		\
   _(DROP, "error-drop")				\
-  _(SLOW_PATH, "hanat-worker-slow-output")	\
+  _(SLOW_TUNNEL, "hanat-worker-slow-tunnel")	\
   _(IP4_LOOKUP, "ip4-lookup")
 
 typedef enum {
@@ -297,7 +297,7 @@ hanat_worker (vlib_main_t * vm,
 	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
 	    cache_hit++;
 	  } else {
-	    next0 = HANAT_WORKER_NEXT_SLOW_PATH;
+	    next0 = HANAT_WORKER_NEXT_SLOW_FEATURE;
 	    b0->error = node->errors[HANAT_WORKER_CACHE_MISS_PACKETS];
 	    cache_miss++;
 	  }
@@ -395,7 +395,7 @@ hanat_gre4_input (vlib_main_t * vm,
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
 	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
 	  } else {
-	    next0 = HANAT_GRE4_INPUT_NEXT_SLOW_PATH;
+	    next0 = HANAT_GRE4_INPUT_NEXT_SLOW_TUNNEL;
 	    b0->error = node->errors[HANAT_WORKER_CACHE_MISS_PACKETS];
 	    /* Pass GRE information to slow path */
 	    hanat_gre_data_t *metadata = (hanat_gre_data_t *)vnet_buffer2(b0);

@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/*
+ * This module implement the HANAT session request protocol.  The slow
+ * node receives data packets from the fast worker, and generates
+ * sessions requests.  The input node receives session bindings from
+ * the mapper and updates the session cache.
+ */
+
 #include <arpa/inet.h>
 
 #include <vnet/ip/ip4_packet.h>
@@ -27,32 +34,30 @@
 #include "hanat_worker_db.h"
 #include "../protocol/hanat_protocol.h"
 
-static vlib_node_registration_t hanat_worker_slow_output_node;
-
 /*
  * hanat-worker-slow NEXT nodes
  */
-#define foreach_hanat_worker_slow_output_next	\
-  _(IP4_LOOKUP, "ip4-lookup")			\
+#define foreach_hanat_worker_slow_next	\
+  _(IP4_LOOKUP, "ip4-lookup")		\
   _(DROP, "error-drop")
 
 typedef enum {
-#define _(s, n) HANAT_WORKER_SLOW_OUTPUT_NEXT_##s,
-  foreach_hanat_worker_slow_output_next
+#define _(s, n) HANAT_WORKER_SLOW_NEXT_##s,
+  foreach_hanat_worker_slow_next
 #undef _
-    HANAT_WORKER_SLOW_OUTPUT_N_NEXT,
-} hanat_worker_slow_output_next_t;
+    HANAT_WORKER_SLOW_N_NEXT,
+} hanat_worker_slow_next_t;
 
 
-#define foreach_hanat_worker_slow_input_next	\
+#define foreach_hanat_protocol_input_next	\
   _(DROP, "error-drop")
 
 typedef enum {
-#define _(s, n) HANAT_WORKER_SLOW_INPUT_NEXT_##s,
-  foreach_hanat_worker_slow_input_next
+#define _(s, n) HANAT_PROTOCOL_INPUT_NEXT_##s,
+  foreach_hanat_protocol_input_next
 #undef _
-    HANAT_WORKER_SLOW_INPUT_N_NEXT,
-} hanat_worker_slow_input_next_t;
+    HANAT_PROTOCOL_INPUT_N_NEXT,
+} hanat_protocol_input_next_t;
 
 /*
  * Counters
@@ -76,6 +81,26 @@ static char *hanat_worker_slow_counter_strings[] = {
 #undef _
 };
 
+#define foreach_hanat_protocol_input_counters	\
+  /* Must be first. */				\
+  _(MAPPER_BINDING, "mapper binding")		\
+  _(NO_MAPPER, "no mapper found")		\
+  _(HELD_PACKET, "forwarded held packet")
+
+typedef enum
+{
+#define _(sym, str) HANAT_PROTOCOL_INPUT_##sym,
+  foreach_hanat_protocol_input_counters
+#undef _
+    HANAT_PROTOCOL_INPUT_N_ERROR,
+} hanat_protocol_input_counters_t;
+
+static char *hanat_protocol_input_counter_strings[] = {
+#define _(sym,string) string,
+  foreach_hanat_protocol_input_counters
+#undef _
+};
+
 /*
  * Trace
  */
@@ -93,6 +118,9 @@ format_hanat_worker_slow_trace (u8 * s, va_list * args)
   return s;
 }
 
+/*
+ * This function tries to figure out the interface mode of the packet's RX interface.
+ */
 u32
 hanat_get_interface_mode(u32 sw_if_index)
 {
@@ -215,15 +243,13 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
   /* Add to frame */
   give_to_frame(hm->ip4_lookup_node_index, bi);
       
-  vlib_node_increment_counter (vm, hanat_worker_slow_output_node.index,
-			       HANAT_WORKER_SLOW_MAPPER_REQUEST, 1);
   return 0;
 }
 
-static uword
-hanat_worker_slow_output (vlib_main_t * vm,
+static inline uword
+hanat_worker_slow_inline (vlib_main_t * vm,
 			  vlib_node_runtime_t * node,
-			  vlib_frame_t * frame)
+			  vlib_frame_t * frame, bool tunnel)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 n_left_from, *from, *to_next;
@@ -255,9 +281,8 @@ hanat_worker_slow_output (vlib_main_t * vm,
 
 	  ip0 = (ip4_header_t *) vlib_buffer_get_current (b0);
 	  sw_if_index0 = vnet_buffer (b0)->sw_if_index[VLIB_RX];
-	  u32 mode0 = hanat_get_interface_mode(sw_if_index0);
-	  bool tunnel = false;
-	  if (mode0 == ~0) {
+	  u32 mode0;
+	  if (tunnel) {
 	    hanat_gre_data_t *metadata = (hanat_gre_data_t *)vnet_buffer2(b0);
 	    vni0 = metadata->vni;
 	    gre0 = metadata->src;
@@ -266,40 +291,66 @@ hanat_worker_slow_output (vlib_main_t * vm,
 	  } else {
 	    vni0 = fib_table_get_index_for_sw_if_index (FIB_PROTOCOL_IP4,
 							sw_if_index0);
+	    mode0 = hanat_get_interface_mode(sw_if_index0);
+	    if (mode0 == ~0) { /* NAT not enabled on interface? */
+	      goto drop0;
+	    }
 	  }
 
 	  u32 mid0 = find_mapper(sw_if_index0, vni0, ip0, mode0);
-	  if (mid0 != ~0) {
-	    hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
-	    if (pe) {
-	      hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel);
-	      send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
-	      if (tunnel) { /* Reset buffer to be able to play it back to hanat_gre4_input */
-		int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
-		vlib_buffer_advance(b0, -header_len);
-	      }
-	    }
-	  } else {
-	    b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
-	    next0 = HANAT_WORKER_SLOW_OUTPUT_NEXT_DROP;
-	    if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
-			       && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
-	      hanat_worker_slow_trace_t *t =
-		vlib_add_trace (vm, node, b0, sizeof (*t));
-	    }
-	    to_next[0] = bi0;
-	    to_next += 1;
-	    n_left_to_next -= 1;
-	    /* verify speculative enqueue, maybe switch current next frame */
-	    vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					     to_next, n_left_to_next,
-					     bi0, next0);
+	  if (mid0 == ~0) goto drop0;
+
+	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
+	  if (!pe) goto drop0;
+
+	  hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel);
+	  send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
+	  if (tunnel) { /* Reset buffer to be able to play it back to hanat_gre4_input */
+	    int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
+	    vlib_buffer_advance(b0, -header_len);
 	  }
+	  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_SLOW_MAPPER_REQUEST, 1);
+	  continue;
+
+	  /* Fall through to failure */
+	drop0:
+	  clib_warning("OLE DROPPING!!!!");
+	  b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
+	  next0 = HANAT_WORKER_SLOW_NEXT_DROP;
+	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
+			     && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
+	    hanat_worker_slow_trace_t *t =
+	      vlib_add_trace (vm, node, b0, sizeof (*t));
+	  }
+	  to_next[0] = bi0;
+	  to_next += 1;
+	  n_left_to_next -= 1;
+	  /* verify speculative enqueue, maybe switch current next frame */
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next,
+					   bi0, next0);
+
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
   //send_protocol_requests();
   return frame->n_vectors;
+}
+
+static uword
+hanat_worker_slow_feature (vlib_main_t * vm,
+			   vlib_node_runtime_t * node,
+			   vlib_frame_t * frame)
+{
+  return hanat_worker_slow_inline(vm, node, frame, false /* input feature */);
+}
+
+static uword
+hanat_worker_slow_tunnel (vlib_main_t * vm,
+			  vlib_node_runtime_t * node,
+			  vlib_frame_t * frame)
+{
+  return hanat_worker_slow_inline(vm, node, frame, true /* tunnel */);
 }
 
 /*
@@ -308,12 +359,12 @@ hanat_worker_slow_output (vlib_main_t * vm,
  * Single-thread at the moment?
  */
 static uword
-hanat_worker_slow_input (vlib_main_t * vm,
+hanat_protocol_input (vlib_main_t * vm,
 			 vlib_node_runtime_t * node,
 			 vlib_frame_t * frame)
 {
   u32 n_left_from, *from, *to_next;
-  hanat_worker_slow_input_next_t next_index;
+  hanat_protocol_input_next_t next_index;
   hanat_worker_main_t *hm = &hanat_worker_main;
 
   from = vlib_frame_vector_args (frame);
@@ -330,7 +381,7 @@ hanat_worker_slow_input (vlib_main_t * vm,
 	{
 	  u32 bi0;
 	  vlib_buffer_t *b0;
-	  u32 next0 = HANAT_WORKER_SLOW_INPUT_NEXT_DROP;
+	  u32 next0 = HANAT_PROTOCOL_INPUT_NEXT_DROP;
 	  u32 error0 = 0;
 	  udp_header_t *u0;
 	  hanat_header_t *h0;
@@ -383,8 +434,11 @@ hanat_worker_slow_input (vlib_main_t * vm,
 	      hanat_worker_cache_update(s, ntohl(sp->instructions), ntohl(sp->fib_index),
 					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
 
+	      vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_MAPPER_BINDING, 1);
+
 	      /* Put cached packet back to fast worker node */
 	      if (s->entry.buffer) {
+		vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
 		if (s->entry.tunnel)
 		  give_to_frame(hm->hanat_gre4_input_node_index, s->entry.buffer);
 		else
@@ -424,34 +478,58 @@ hanat_worker_slow_input (vlib_main_t * vm,
 }
 
 /* *INDENT-OFF* */
-VLIB_REGISTER_NODE(hanat_worker_slow_output_node, static) = {
-    .function = hanat_worker_slow_output,
-    .name = "hanat-worker-slow-output",
+/*
+ * Node receiving packets from the input feature path fast node
+ */
+VLIB_REGISTER_NODE(hanat_worker_slow_feature_node, static) = {
+    .function = hanat_worker_slow_feature,
+    .name = "hanat-worker-slow-feature",
     /* Takes a vector of packets. */
     .vector_size = sizeof(u32),
     .n_errors = HANAT_WORKER_SLOW_N_ERROR,
     .error_strings = hanat_worker_slow_counter_strings,
-    .n_next_nodes = HANAT_WORKER_SLOW_OUTPUT_N_NEXT,
+    .n_next_nodes = HANAT_WORKER_SLOW_N_NEXT,
     .next_nodes =
     {
-#define _(s, n) [HANAT_WORKER_SLOW_OUTPUT_NEXT_##s] = n,
-     foreach_hanat_worker_slow_output_next
+#define _(s, n) [HANAT_WORKER_SLOW_NEXT_##s] = n,
+     foreach_hanat_worker_slow_next
 #undef _
     },
     .format_trace = format_hanat_worker_slow_trace,
 };
-VLIB_REGISTER_NODE(hanat_worker_slow_input_node) = {
-    .function = hanat_worker_slow_input,
-    .name = "hanat-worker-slow-input",
+
+/*
+ * Node receiving packets from a NAT inside tunnel fast node
+ */
+VLIB_REGISTER_NODE(hanat_worker_slow_tunnel_node, static) = {
+    .function = hanat_worker_slow_tunnel,
+    .name = "hanat-worker-slow-tunnel",
     /* Takes a vector of packets. */
     .vector_size = sizeof(u32),
     .n_errors = HANAT_WORKER_SLOW_N_ERROR,
     .error_strings = hanat_worker_slow_counter_strings,
-    .n_next_nodes = HANAT_WORKER_SLOW_INPUT_N_NEXT,
+    .n_next_nodes = HANAT_WORKER_SLOW_N_NEXT,
     .next_nodes =
     {
-#define _(s, n) [HANAT_WORKER_SLOW_INPUT_NEXT_##s] = n,
-     foreach_hanat_worker_slow_input_next
+#define _(s, n) [HANAT_WORKER_SLOW_NEXT_##s] = n,
+     foreach_hanat_worker_slow_next
+#undef _
+    },
+    .format_trace = format_hanat_worker_slow_trace,
+};
+
+VLIB_REGISTER_NODE(hanat_protocol_input_node) = {
+    .function = hanat_protocol_input,
+    .name = "hanat-protocol-input",
+    /* Takes a vector of packets. */
+    .vector_size = sizeof(u32),
+    .n_errors = HANAT_PROTOCOL_INPUT_N_ERROR,
+    .error_strings = hanat_protocol_input_counter_strings,
+    .n_next_nodes = HANAT_PROTOCOL_INPUT_N_NEXT,
+    .next_nodes =
+    {
+#define _(s, n) [HANAT_PROTOCOL_INPUT_NEXT_##s] = n,
+     foreach_hanat_protocol_input_next
 #undef _
     },
     .format_trace = format_hanat_worker_slow_trace,

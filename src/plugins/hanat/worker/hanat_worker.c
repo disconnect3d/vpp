@@ -25,7 +25,7 @@
 #include "hanat_worker_db.h"
 
 hanat_worker_main_t hanat_worker_main;
-extern vlib_node_registration_t hanat_worker_slow_input_node;
+extern vlib_node_registration_t hanat_protocol_input_node;
 extern vlib_node_registration_t hanat_gre4_input_node;
 
 static clib_error_t *
@@ -238,7 +238,7 @@ hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src)
   vlib_main_t * vm = vlib_get_main();
   hanat_worker_main_t *hm = &hanat_worker_main;
 
-  udp_register_dst_port (vm, udp_port, hanat_worker_slow_input_node.index, 1 /*is_ip4 */);
+  udp_register_dst_port (vm, udp_port, hanat_protocol_input_node.index, 1 /*is_ip4 */);
 
   if (gre_src->as_u32 > 0) {
     int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);

@@ -281,7 +281,7 @@ hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm)
 VLIB_PLUGIN_REGISTER () =
 {
   .version = VPP_BUILD_VER,
-  .description = "High Availability NAT Worker Node",
+  .description = "High Availability NAT Worker",
 };
 /* *INDENT-ON* */
 
