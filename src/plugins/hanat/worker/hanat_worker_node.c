@@ -29,8 +29,7 @@
  */
 #define foreach_hanat_worker_next		\
   _(DROP, "error-drop")				\
-  _(SLOW_FEATURE, "hanat-worker-slow-feature")	\
-  _(IP4_LOOKUP, "ip4-lookup")
+  _(SLOW_FEATURE, "hanat-worker-slow-feature")
 
 typedef enum {
 #define _(s, n) HANAT_WORKER_NEXT_##s,
@@ -289,16 +288,13 @@ hanat_worker (vlib_main_t * vm,
 	  u32 out_fib_index0;
 	  hanat_session_t *session;
 	  if (hanat_nat44_transform(&hm->db, vni0, ip0, now, &out_fib_index0, &session)) {
-	    //vnet_feature_next(&next0, b0); // TODO require separate node for with and without feature path.
+	    vnet_feature_next(&next0, b0);
 	    if (session->entry.gre.as_u32)
 	      add_gre_encap(b0, ip0, session->entry.gre, out_fib_index0);
-	    next0 = HANAT_WORKER_NEXT_IP4_LOOKUP;
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
-	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
 	    cache_hit++;
 	  } else {
 	    next0 = HANAT_WORKER_NEXT_SLOW_FEATURE;
-	    b0->error = node->errors[HANAT_WORKER_CACHE_MISS_PACKETS];
 	    cache_miss++;
 	  }
 
@@ -320,12 +316,9 @@ hanat_worker (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
-#if 0
-  vlib_error_count (vm, node->node_index,
-		    HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
-  vlib_error_count (vm, node->node_index,
-		    HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
-#endif
+  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
+  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
+
   return frame->n_vectors;
 }
 
@@ -339,10 +332,11 @@ hanat_gre4_input (vlib_main_t * vm,
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   f64 now = vlib_time_now (vm);
-  u32 n_left_from, next_index, *from, *to_next;
+  u32 n_left_from, *from, *to_next;
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
-  next_index = node->cached_next_index;
+  u32 next_index = node->cached_next_index;
+  u32 cache_hit = 0, cache_miss = 0;
 
   while (n_left_from > 0)
     {
@@ -393,21 +387,21 @@ hanat_gre4_input (vlib_main_t * vm,
 	  if (hanat_nat44_transform(&hm->db, vni0, inner_ip0, now, &out_fib_index0, &session)) {
 	    next0 = HANAT_GRE4_INPUT_NEXT_IP4_LOOKUP;
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
-	    b0->error = node->errors[HANAT_WORKER_CACHE_HIT_PACKETS];
+	    cache_hit++;
 	  } else {
 	    next0 = HANAT_GRE4_INPUT_NEXT_SLOW_TUNNEL;
-	    b0->error = node->errors[HANAT_WORKER_CACHE_MISS_PACKETS];
+
 	    /* Pass GRE information to slow path */
 	    hanat_gre_data_t *metadata = (hanat_gre_data_t *)vnet_buffer2(b0);
 	    metadata->src = ip40->src_address;
 	    metadata->vni = vni0;
-
+	    cache_miss++;
 	  }
 
 	error0:
 	  if (error0) {
-	    next0 = HANAT_GRE4_INPUT_NEXT_DROP;
 	    b0->error = node->errors[error0];
+	    next0 = HANAT_GRE4_INPUT_NEXT_DROP;
 	  }
 
 	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED)) {
@@ -419,6 +413,9 @@ hanat_gre4_input (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
+  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
+  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
+
   return frame->n_vectors;
 }
 

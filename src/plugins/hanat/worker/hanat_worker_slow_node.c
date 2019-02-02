@@ -85,7 +85,8 @@ static char *hanat_worker_slow_counter_strings[] = {
   /* Must be first. */				\
   _(MAPPER_BINDING, "mapper binding")		\
   _(NO_MAPPER, "no mapper found")		\
-  _(HELD_PACKET, "forwarded held packet")
+  _(HELD_PACKET, "forwarded held packet")	\
+  _(NOT_IMPLEMENTED_YET, "not implemented yet")
 
 typedef enum
 {
@@ -401,7 +402,7 @@ hanat_protocol_input (vlib_main_t * vm,
 
 	  ip40 = (ip4_header_t *) (((u8 *) u0) - sizeof (ip4_header_t));
 	  if (ip40->ip_version_and_header_length != 0x45) {
-	    error0 = 0; //DNS46_REQUEST_ERROR_IP_OPTIONS;
+	    error0 = 0;
 	    goto done0;
 	  }
 
@@ -434,8 +435,6 @@ hanat_protocol_input (vlib_main_t * vm,
 	      hanat_worker_cache_update(s, ntohl(sp->instructions), ntohl(sp->fib_index),
 					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
 
-	      vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_MAPPER_BINDING, 1);
-
 	      /* Put cached packet back to fast worker node */
 	      if (s->entry.buffer) {
 		vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
@@ -450,8 +449,7 @@ hanat_protocol_input (vlib_main_t * vm,
 	  case HANAT_SESSION_DECLINE:
 	    break;
 	  default:
-	    // increase error counter
-	    // move tl
+	    error0 = HANAT_PROTOCOL_INPUT_NOT_IMPLEMENTED_YET;
 	    break;
 	  }
 
