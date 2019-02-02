@@ -10,7 +10,7 @@ from vpp_ip_route import VppIpRoute, VppRoutePath, VppIpTable
 from util import reassemble4
 from vpp_papi import VppEnum
 from hanat import *
-
+import pprint
 
 hanat_configured=False
 
@@ -132,6 +132,14 @@ class TestHANAT(VppTestCase):
     def hanat_configure(self):
         global hanat_configured
 
+        # Route for "the Internet"
+        route = VppIpRoute(self, "8.0.0.0", 8,
+                           [VppRoutePath(self.pg1.remote_ip4,
+                                         self.pg1.sw_if_index)])
+
+        route.add_vpp_config()
+
+
         if hanat_configured:
             return
         hanat_configured=True
@@ -163,12 +171,6 @@ class TestHANAT(VppTestCase):
                                                            mode=mode)
         self.assertEqual(rv.retval, 0)
 
-        # Route for "the Internet"
-        route = VppIpRoute(self, "8.0.0.0", 8,
-                           [VppRoutePath(self.pg1.remote_ip4,
-                                         self.pg1.sw_if_index)])
-
-        route.add_vpp_config()
 
     def test_hanat_gre(self):
         """ hanat_worker GRE test """
@@ -180,7 +182,7 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_cache_clear()
         self.assertEqual(rv.retval, 0)
 
-
+        print(self.vapi.cli("show ip fib"))
         tests = [
             {'name': 'Simple TCP SYN', 'in2out': True,
              'src': self.pg0.remote_ip4, 'dst': '8.8.8.9', 'protocol': 'TCP', 'sport': 40002, 'dport': 5555, 'vni': 123,
@@ -251,6 +253,11 @@ class TestHANAT(VppTestCase):
             rx.show2()
             self.validate(rx[1], reply)
 
+        rv = self.vapi.papi.hanat_worker_cache_dump()
+        self.assertEqual(len(rv), len(tests))
+        pp = pprint.PrettyPrinter()
+        pp.pprint(rv)
+
 
     def test_hanat(self):
         """ hanat_worker basic test """
@@ -313,7 +320,6 @@ class TestHANAT(VppTestCase):
             {'name': 'Simple ICMP reverse', 'in2out': False,
              'src': '8.8.8.9', 'dst': '130.67.1.1', 'protocol': 'ICMP', 'identifier': 11,
              'post': {'instr': ['DST','DST_PORT'], 'post_da': self.pg0.remote_ip4, 'post_dp': 40002}},
-
         ]
 
         p_ether_pg0 = Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac)
@@ -366,9 +372,14 @@ class TestHANAT(VppTestCase):
             self.validate(rx[1], reply)
 
         # Dump cache
-        #rv = self.vapi.papi.hanat_worker_cache_dump()
-        #print('RV', rv)
-        #self.assertEqual(1, len(rv))
+        rv = self.vapi.papi.hanat_worker_cache_dump()
+        self.assertEqual(len(rv), len(tests))
+        pp = pprint.PrettyPrinter()
+        pp.pprint(rv)
+        rv = self.vapi.papi.hanat_worker_cache_clear()
+        self.assertEqual(rv.retval, 0)
+        rv = self.vapi.papi.hanat_worker_cache_dump()
+        self.assertEqual(0, len(rv))
 
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
         rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,

@@ -192,6 +192,7 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   memcpy(&rmp->post_da, &s->entry.post_da, 4);
   rmp->post_sp = htons(s->entry.post_sp);
   rmp->post_dp = htons(s->entry.post_dp);
+  memcpy(&rmp->gre, &s->entry.gre, 4);
   vl_api_send_msg (reg, (u8 *) rmp);
 }
 

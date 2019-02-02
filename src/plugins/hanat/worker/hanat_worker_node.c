@@ -361,6 +361,7 @@ hanat_gre4_input (vlib_main_t * vm,
 	  u32 next0, error0 = 0;
 
 	  bi0 = from[0];
+	  clib_warning("GRE input processing %d", bi0);
 	  to_next[0] = bi0;
 	  from += 1;
 	  to_next += 1;
