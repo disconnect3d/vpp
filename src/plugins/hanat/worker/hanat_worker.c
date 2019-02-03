@@ -87,7 +87,7 @@ hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worke
 /*
  * Checksum delta
  */
-static int
+int
 l3_checksum_delta(hanat_instructions_t instructions,
 		  ip4_address_t pre_sa, ip4_address_t post_sa,
 		  ip4_address_t pre_da, ip4_address_t post_da)
@@ -104,7 +104,7 @@ l3_checksum_delta(hanat_instructions_t instructions,
   return c;
 }
 
-static int
+int
 l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
 		   u16 pre_sp, u16 post_sp, u16 pre_dp, u16 post_dp)
 {
@@ -150,33 +150,6 @@ hanat_worker_cache_clear (void)
 
 
   return 0;
-}
-
-void
-hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
-			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
-			  u16 sport, u16 dport, ip4_address_t gre)
-{
-  /* Update session entry */
-  hanat_session_key_t *key = &s->key;
-  hanat_session_entry_t *entry = &s->entry;
-  entry->instructions = instructions;
-  entry->fib_index = fib_index;
-  memcpy(&entry->post_sa, &sa->as_u32, 4);
-  memcpy(&entry->post_da, &da->as_u32, 4);
-  entry->post_sp = sport; /* Network byte order */
-  entry->post_dp = dport; /* Network byte order */
-
-  if (gre.as_u32)
-    entry->gre = gre;
-
-  ip_csum_t c = l3_checksum_delta(instructions, key->sa, entry->post_sa, key->da, entry->post_da);
-  if (key->proto == IP_PROTOCOL_ICMP) /* ICMP checksum does not include pseudoheader */
-    entry->l4_checksum = l4_checksum_delta(entry->instructions, 0, key->sp, entry->post_sp, key->dp, entry->post_dp);
-  else
-    entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
-  entry->checksum = c;
-
 }
 
 int

@@ -100,7 +100,7 @@ static char *hanat_gre4_input_counter_strings[] = {
 
 
 /*
- * hanat-worker Trace
+ * hanat-worker trace
  */
 typedef struct {
   u32 sw_if_index;
@@ -206,7 +206,7 @@ hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, f64 now,
 
   /* 6-tuple lookup */
   s = hanat_session_find_ip(db, fib_index, ip);
-  if (!s)
+  if (!s || s->entry.flags & HANAT_SESSION_FLAG_INCOMPLETE)
     return false;
   *out_fib_index = s->entry.fib_index;
   if (now >= s->entry.last_heard + 10) {

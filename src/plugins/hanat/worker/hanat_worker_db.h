@@ -59,6 +59,10 @@ typedef struct {
   ip4_address_t src;
 } hanat_gre_data_t;
 
+typedef enum {
+  HANAT_SESSION_FLAG_INCOMPLETE = 0x1,
+  HANAT_SESSION_FLAG_TUNNEL     = 0x2,
+} hanat_session_entry_flags_t;
 /* Session cache entries */
 typedef struct {
   /* What to translate to */
@@ -76,7 +80,7 @@ typedef struct {
   u32 buffer;
   f64 last_heard;
   ip4_address_t gre;
-  bool tunnel;
+  hanat_session_entry_flags_t flags;
 } hanat_session_entry_t;
 
 typedef struct {
@@ -151,12 +155,13 @@ hanat_session_t *hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_heade
 int hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode);
 clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
-void hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
-			       u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
-			       u16 sport, u16 dport, ip4_address_t gre);
-
-hanat_session_t *hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi, bool tunnel);
 int hanat_worker_cache_clear(void);
+void hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key);
+int l3_checksum_delta(hanat_instructions_t instructions,
+		      ip4_address_t pre_sa, ip4_address_t post_sa,
+		      ip4_address_t pre_da, ip4_address_t post_da);
+int l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
+		       u16 pre_sp, u16 post_sp, u16 pre_dp, u16 post_dp);
 
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
@@ -169,5 +174,6 @@ void hanat_lpm_64_delete (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxl
 u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, u32 fib_index, u32 address);
 
 u32 hanat_get_interface_mode(u32 sw_if_index);
+int hanat_session_stale_cb(clib_bihash_kv_16_8_t *kv, void *arg);
 
 #endif

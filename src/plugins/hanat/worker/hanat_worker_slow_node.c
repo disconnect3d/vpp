@@ -22,7 +22,7 @@
  */
 
 #include <arpa/inet.h>
-
+#include <assert.h>
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/udp/udp_packet.h>
 #include <vnet/udp/udp.h>
@@ -65,7 +65,8 @@ typedef enum {
 #define foreach_hanat_worker_slow_counters	\
   /* Must be first. */				\
   _(MAPPER_REQUEST, "mapper request")		\
-  _(NO_MAPPER, "no mapper found")
+  _(NO_MAPPER, "no mapper found")		\
+  _(QUEUED_DROPPED, "dropped queued packet")
 
 typedef enum
 {
@@ -247,6 +248,75 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
   return 0;
 }
 
+static void
+hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
+			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
+			  u16 sport, u16 dport, ip4_address_t gre)
+{
+  /* Update session entry */
+  hanat_session_key_t *key = &s->key;
+  hanat_session_entry_t *entry = &s->entry;
+  entry->flags &= ~HANAT_SESSION_FLAG_INCOMPLETE;
+  entry->instructions = instructions;
+  entry->fib_index = fib_index;
+  memcpy(&entry->post_sa, &sa->as_u32, 4);
+  memcpy(&entry->post_da, &da->as_u32, 4);
+  entry->post_sp = sport; /* Network byte order */
+  entry->post_dp = dport; /* Network byte order */
+
+  if (gre.as_u32)
+    entry->gre = gre;
+
+  ip_csum_t c = l3_checksum_delta(instructions, key->sa, entry->post_sa, key->da, entry->post_da);
+  if (key->proto == IP_PROTOCOL_ICMP) /* ICMP checksum does not include pseudoheader */
+    entry->l4_checksum = l4_checksum_delta(entry->instructions, 0, key->sp, entry->post_sp, key->dp, entry->post_dp);
+  else
+    entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
+  entry->checksum = c;
+
+}
+
+static hanat_session_t *
+hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *ip, u32 bi, bool tunnel, u32 *rv)
+{
+  hanat_session_key_t key;
+  hanat_session_t *s;
+  vlib_main_t *vm = vlib_get_main();
+
+  hanat_key_from_ip(fib_index, ip, &key);
+  /* Check if session already exists */
+  s = hanat_session_find(db, &key);
+  if (!s) {
+    /* Add session to pool */
+    pool_get_zero(db->sessions, s);
+    s->key = key;
+    clib_bihash_kv_16_8_t kv;
+    kv.key[0] = key.as_u64[0];
+    kv.key[1] = key.as_u64[1];
+    kv.value = s - db->sessions;
+    if (clib_bihash_add_or_overwrite_stale_16_8(&db->cache, &kv, hanat_session_stale_cb, &db))
+      assert(0);
+  } else {
+    /* - If not incomplete, report error
+     * - If existing buffer, send buffer to drop node, and enqueue current one
+     */
+    if (s->entry.buffer) {
+      clib_warning("OLE Buffer exists. Silently discard");
+      vlib_buffer_free(vm, &s->entry.buffer, 1);
+      *rv = HANAT_WORKER_SLOW_QUEUED_DROPPED;
+    }
+  }
+
+  s->entry.buffer = bi;
+  if (tunnel)
+    s->entry.flags |= HANAT_SESSION_FLAG_TUNNEL;
+
+  s->entry.flags |= HANAT_SESSION_FLAG_INCOMPLETE;
+
+  /* Add to index */
+  return s;
+}
+
 static inline uword
 hanat_worker_slow_inline (vlib_main_t * vm,
 			  vlib_node_runtime_t * node,
@@ -303,8 +373,10 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 
 	  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, mid0);
 	  if (!pe) goto drop0;
-
-	  hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel);
+	  u32 rv = 0;
+	  hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel, &rv);
+	  if (rv)
+	    vlib_node_increment_counter (vm, node->node_index, rv, 1);
 	  send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
 	  if (tunnel) { /* Reset buffer to be able to play it back to hanat_gre4_input */
 	    int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
@@ -315,7 +387,6 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 
 	  /* Fall through to failure */
 	drop0:
-	  clib_warning("OLE DROPPING!!!!");
 	  b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
 	  next0 = HANAT_WORKER_SLOW_NEXT_DROP;
 	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
@@ -438,7 +509,7 @@ hanat_protocol_input (vlib_main_t * vm,
 	      /* Put cached packet back to fast worker node */
 	      if (s->entry.buffer) {
 		vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
-		if (s->entry.tunnel)
+		if (s->entry.flags & HANAT_SESSION_FLAG_TUNNEL)
 		  give_to_frame(hm->hanat_gre4_input_node_index, s->entry.buffer);
 		else
 		  give_to_frame(hm->hanat_worker_node_index, s->entry.buffer);
