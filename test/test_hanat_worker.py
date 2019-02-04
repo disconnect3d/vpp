@@ -145,25 +145,28 @@ class TestHANAT(VppTestCase):
         hanat_configured=True
         # Configure the mapper for a pool
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
-                                                        pool_id=0,
+                                                        pool_id=100,
                                                         pool='130.67.0.0/24',
                                                         src='1.1.1.1',
                                                         mapper='1.2.3.4',
                                                         udp_port=1234)
 
 
+        self.assertEqual(rv.retval, 0)
         print('RV', rv)
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
-                                                        pool_id=0,
+                                                        pool_id=200,
                                                         pool='130.67.1.0/24',
                                                         src=self.pg2.remote_ip4,
                                                         mapper=self.pg2.local_ip4,
                                                         udp_port=1234)
 
         print('RV', rv)
-        buckets = [1]*1024
+        self.assertEqual(rv.retval, 0)
+        buckets = [rv.mapper_index]*1024
         rv = self.vapi.papi.hanat_worker_mapper_buckets(mapper_index=buckets)
         print('RV', rv)
+        self.assertEqual(rv.retval, 0)
 
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE
         rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg1.sw_if_index,
@@ -456,15 +459,17 @@ class TestHANAT(VppTestCase):
                 # Send binding reply and expect data packet
                 rx = self.send_and_expect(self.pg2, binding_reply*1, rx_interface)[0]
             print("HERE SHOULD BE THE DATA PACKET")
-            #rx.show2()
-            #reply = get_reply(p[1], t['post'])
-            #self.validate(rx[1], reply)
+            rx.show2()
+            reply = get_reply(p[1], t['post'])
+            self.validate(rx[1], reply)
 
             # Send packet through cached entry
-            #print("TRYING TO SEND THROUGH CACHE")
-            #p.show2()
-            #rx = self.send_and_expect(tx_interface, p*1, rx_interface)[0] # Or rx_interface
-            #self.validate(rx[1], reply)
+            print("TRYING TO SEND THROUGH CACHE")
+            for i in range(0,15):
+                p.show2()
+                rx = self.send_and_expect(tx_interface, p*1, rx_interface)[0] # Or rx_interface
+                self.validate(rx[1], reply)
+                time.sleep(1)
 
         # Dump cache
         rv = self.vapi.papi.hanat_worker_cache_dump()

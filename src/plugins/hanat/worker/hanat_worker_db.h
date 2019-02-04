@@ -24,6 +24,9 @@
 #include <vnet/ip/ip6_packet.h>
 #include "../protocol/hanat_protocol.h"
 
+#define HANAT_CACHE_EXPIRY_TIMER	100 /* Seconds */
+#define HANAT_CACHE_REFRESH_INTERVAL	 10 /* Seconds */
+
 typedef unsigned int u32;
 
 /* Move to vnet/ip? */
@@ -79,6 +82,7 @@ typedef struct {
   //  vlib_combined_counter_t counter;
   u32 buffer;
   f64 last_heard;
+  f64 last_refreshed;
   ip4_address_t gre;
   hanat_session_entry_flags_t flags;
 } hanat_session_entry_t;
@@ -141,6 +145,9 @@ typedef struct {
   u16 msg_id_base;
 
   void *gre_template;
+
+  u32 cache_expiry_timer;	/* In seconds */
+  u32 cache_refresh_interval;	/* In seconds */
 } hanat_worker_main_t;
 
 extern hanat_worker_main_t hanat_worker_main;
@@ -166,8 +173,7 @@ int l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
 int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 n, u32 mapper_index[]);
-int hanat_worker_enable(u16 udp_port, ip4_address_t *src);
-
+int hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer, u32 cache_refresh_interval);
 void hanat_mapper_table_init(hanat_pool_t *db);
 void hanat_lpm_64_add (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen, u32 value);
 void hanat_lpm_64_delete (hanat_pool_t *lpm, u32 fib_index, u32 address, u8 pfxlen);

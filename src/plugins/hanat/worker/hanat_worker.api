@@ -147,5 +147,6 @@ autoreply define hanat_worker_enable {
   u32 context;
   u16 udp_port;
   vl_api_ip4_address_t gre_src;
-  // timers
+  u32 cache_expiry_timer;
+  u32 cache_refresh_interval;
 };

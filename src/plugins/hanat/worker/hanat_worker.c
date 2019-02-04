@@ -190,7 +190,7 @@ int
 hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  int i;
+  int i, rv = 0;
 
   /* Replace stable hash */
   if (hm->pool_db.lb_buckets && vec_len(hm->pool_db.lb_buckets))
@@ -198,20 +198,27 @@ hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
 
   vec_validate (hm->pool_db.lb_buckets, n);
   for (i = 0; i < n; i++) {
+    if (pool_is_free_index(hm->pool_db.pools, ntohl(mapper_index[i]))) {
+      rv = -1;
+      break;
+    }
     hm->pool_db.lb_buckets[i] = ntohl(mapper_index[i]);
   }
   hm->pool_db.n_buckets = n;
 
-  return 0;
+  return rv;
 }
 
 int
-hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src)
+hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer, u32 cache_refresh_interval)
 {
   vlib_main_t * vm = vlib_get_main();
   hanat_worker_main_t *hm = &hanat_worker_main;
 
   udp_register_dst_port (vm, udp_port, hanat_protocol_input_node.index, 1 /*is_ip4 */);
+  hm->cache_expiry_timer = cache_expiry_timer == 0 ? HANAT_CACHE_EXPIRY_TIMER : cache_expiry_timer;
+  hm->cache_refresh_interval = cache_refresh_interval == 0 ? HANAT_CACHE_REFRESH_INTERVAL : cache_refresh_interval;
+  hm->udp_port = udp_port;
 
   if (gre_src->as_u32 > 0) {
     int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
@@ -231,7 +238,6 @@ hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src)
     h->flags_and_version = htons (GRE_FLAGS_KEY);
 
     hm->gre_template = ip;
-    hm->udp_port = udp_port;
     ip4_register_protocol(IP_PROTOCOL_GRE, hanat_gre4_input_node.index);
   }
 

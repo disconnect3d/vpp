@@ -198,20 +198,37 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
   return true;
 }
 
+/*
+ * Send session refresh packet
+ */
+static void
+hanat_refresh_session (hanat_session_t *s)
+{
+  clib_warning("SESSION REFRESH NEEDED");
+  return;
+}
 
 static bool
 hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, f64 now, u32 *out_fib_index, hanat_session_t **session)
 {
   hanat_session_t *s;
+  hanat_worker_main_t *hm = &hanat_worker_main;
 
   /* 6-tuple lookup */
   s = hanat_session_find_ip(db, fib_index, ip);
   if (!s || s->entry.flags & HANAT_SESSION_FLAG_INCOMPLETE)
     return false;
   *out_fib_index = s->entry.fib_index;
-  if (now >= s->entry.last_heard + 10) {
+  if (now >= s->entry.last_heard + hm->cache_expiry_timer) {
     clib_warning("TODO: Entry has expired. Drop cache entry and resend binding request");
+    return false;
   }
+  if (now >= s->entry.last_refreshed + hm->cache_refresh_interval) {
+    clib_warning("TODO: Entry needs refresh.");
+    hanat_refresh_session(s);
+    s->entry.last_refreshed = now;
+  }
+
   s->entry.last_heard = now;
   *session = s;
   return transform_packet(&s->entry, ip);
