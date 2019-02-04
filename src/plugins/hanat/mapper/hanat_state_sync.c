@@ -18,13 +18,19 @@
 #include "hanat_mapper.h"
 #include <vnet/udp/udp.h>
 
+#define HANAT_STATE_SYNC_RETRIES 3
+
 #define foreach_hanat_state_sync_counter     \
 _(RECV_ADD, "add-event-recv", 0)             \
 _(RECV_DEL, "del-event-recv", 1)             \
 _(RECV_KEEPALIVE, "keepalive-event-recv", 2) \
 _(SEND_ADD, "add-event-send", 3)             \
 _(SEND_DEL, "del-event-send", 4)             \
-_(SEND_KEEPALIVE, "keepalive-event-send", 5)
+_(SEND_KEEPALIVE, "keepalive-event-send", 5) \
+_(RECV_ACK, "ack-recv", 6)                   \
+_(SEND_ACK, "ack-send", 7)                   \
+_(RETRY_COUNT, "retry-count", 8)             \
+_(MISSED_COUNT, "missed-count", 9)
 
 typedef enum
 {
@@ -33,6 +39,14 @@ typedef enum
 #undef _
   HANAT_STATE_SYNC_N_COUNTERS
 } hanat_state_sync_counter_t;
+
+typedef struct
+{
+  u32 seq;
+  u32 retry_count;
+  f64 retry_timer;
+  u8 *data;
+} hanat_state_sync_resend_entry_t;
 
 typedef struct
 {
@@ -52,10 +66,117 @@ typedef struct hanat_state_sync_main_s
   vlib_simple_counter_main_t counters[HANAT_STATE_SYNC_N_COUNTERS];
   vlib_main_t *vlib_main;
   hanat_state_sync_failover_t *failovers;
+  u32 sequence_number;
+  hanat_state_sync_resend_entry_t *resend_queue;
 } hanat_state_sync_main_t;
 
 hanat_state_sync_main_t hanat_state_sync_main;
 vlib_node_registration_t hanat_state_sync_process_node;
+
+int
+hanat_state_sync_resend_queue_add (u32 seq, u8 * data, u8 data_len)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  hanat_state_sync_resend_entry_t *entry;
+  f64 now = vlib_time_now (sm->vlib_main);
+
+  vec_add2 (sm->resend_queue, entry, 1);
+  clib_memset (entry, 0, sizeof (*entry));
+  entry->retry_timer = now + 2.0;
+  entry->seq = seq;
+  vec_add (entry->data, data, data_len);
+
+  return 0;
+}
+
+void
+hanat_state_sync_ack_recv (u32 seq)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  u32 i;
+
+  vec_foreach_index (i, sm->resend_queue)
+  {
+    if (sm->resend_queue[i].seq != seq)
+      continue;
+
+    vlib_increment_simple_counter (&sm->counters
+				   [HANAT_STATE_SYNC_COUNTER_RECV_ACK], 0, 0,
+				   1);
+    vec_free (sm->resend_queue[i].data);
+    vec_del1 (sm->resend_queue, i);
+
+    return;
+  }
+}
+
+void
+hanat_state_sync_ack_send_increment_counter (u32 thread_index)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  vlib_increment_simple_counter (&sm->counters
+				 [HANAT_STATE_SYNC_COUNTER_SEND_ACK],
+				 thread_index, 0, 1);
+}
+
+static void
+hanat_state_sync_resend_scan (f64 now)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  u32 i, *del, *to_delete = 0;
+  vlib_main_t *vm = sm->vlib_main;
+  vlib_buffer_t *b = 0;
+  vlib_frame_t *f;
+  u32 bi, *to_next;
+  ip4_header_t *ip;
+
+  vec_foreach_index (i, sm->resend_queue)
+  {
+    if (sm->resend_queue[i].retry_timer > now)
+      continue;
+
+    if (sm->resend_queue[i].retry_count >= HANAT_STATE_SYNC_RETRIES)
+      {
+	vec_add1 (to_delete, i);
+	vlib_increment_simple_counter (&sm->counters
+				       [HANAT_STATE_SYNC_COUNTER_MISSED_COUNT],
+				       0, 0, 1);
+	continue;
+      }
+
+    sm->resend_queue[i].retry_count++;
+    vlib_increment_simple_counter (&sm->counters
+				   [HANAT_STATE_SYNC_COUNTER_RETRY_COUNT], 0,
+				   0, 1);
+    if (vlib_buffer_alloc (vm, &bi, 1) != 1)
+      {
+	clib_warning ("HA NAT state sync can't allocate buffer");
+	return;
+      }
+    b = vlib_get_buffer (vm, bi);
+    b->current_length = vec_len (sm->resend_queue[i].data);
+    b->flags |= VLIB_BUFFER_TOTAL_LENGTH_VALID;
+    b->flags |= VNET_BUFFER_F_LOCALLY_ORIGINATED;
+    vnet_buffer (b)->sw_if_index[VLIB_RX] = 0;
+    vnet_buffer (b)->sw_if_index[VLIB_TX] = 0;
+    ip = vlib_buffer_get_current (b);
+    clib_memcpy (ip, sm->resend_queue[i].data,
+		 vec_len (sm->resend_queue[i].data));
+    f = vlib_get_frame_to_node (vm, ip4_lookup_node.index);
+    to_next = vlib_frame_vector_args (f);
+    to_next[0] = bi;
+    f->n_vectors = 1;
+    vlib_put_frame_to_node (vm, ip4_lookup_node.index, f);
+    sm->resend_queue[i].retry_timer = now + 2.0;
+  }
+
+  vec_foreach (del, to_delete)
+  {
+    vec_free (sm->resend_queue[*del].data);
+    vec_del1 (sm->resend_queue, *del);
+  }
+  vec_free (to_delete);
+}
 
 void
 hanat_state_sync_init (vlib_main_t * vm)
@@ -310,8 +431,9 @@ hanat_state_sync_header_create (vlib_buffer_t * b, u32 * offset,
   udp->checksum = 0;
 
   h->version = HANAT_STATE_SYNC_VERSION;
-  h->rsvd = 0;
+  h->flags = 0;
   h->count = 0;
+  h->sequence_number = clib_host_to_net_u32 (sm->sequence_number++);
 
   *offset =
     sizeof (ip4_header_t) + sizeof (udp_header_t) +
@@ -339,6 +461,9 @@ hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b,
   ip->length = clib_host_to_net_u16 (b->current_length);
   ip->checksum = ip4_header_checksum (ip);
   udp->length = clib_host_to_net_u16 (b->current_length - sizeof (*ip));
+
+  hanat_state_sync_resend_queue_add (h->sequence_number, (u8 *) ip,
+				     b->current_length);
 
   vlib_put_frame_to_node (vm, ip4_lookup_node.index, f);
 }
@@ -475,10 +600,11 @@ hanat_state_sync_process (vlib_main_t * vm, vlib_node_runtime_t * rt,
 
   while (1)
     {
-      vlib_process_wait_for_event_or_clock (vm, 5.0);
+      vlib_process_wait_for_event_or_clock (vm, 1.0);
       event_type = vlib_process_get_events (vm, &event_data);
       vec_reset_length (event_data);
       hanat_state_sync_flush (vm);
+      hanat_state_sync_resend_scan (vlib_time_now (vm));
     }
 
   return 0;

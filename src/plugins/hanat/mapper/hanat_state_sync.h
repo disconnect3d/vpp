@@ -20,11 +20,14 @@
 
 #define HANAT_STATE_SYNC_VERSION 0x01
 
+#define HANAT_STATE_SYNC_FLAG_ACK 0x01
+
 typedef struct
 {
   u8 version;
-  u8 rsvd;
+  u8 flags;
   u16 count;
+  u32 sequence_number;
 } __attribute__ ((packed)) hanat_state_sync_message_header_t;
 
 typedef struct
@@ -71,6 +74,9 @@ void hanat_state_sync_event_add (hanat_state_sync_event_t * event,
 				 u32 failover_index, u32 thread_index);
 
 void hanat_state_sync_flush (vlib_main_t * vm);
+
+void hanat_state_sync_ack_recv (u32 seq);
+void hanat_state_sync_ack_send_increment_counter (u32 thread_index);
 
 #endif /* __included_hanat_state_sync_h__ */
 
