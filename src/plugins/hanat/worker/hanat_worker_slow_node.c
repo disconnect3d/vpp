@@ -37,8 +37,8 @@
 /*
  * hanat-worker-slow NEXT nodes
  */
-#define foreach_hanat_worker_slow_next	\
-  _(IP4_LOOKUP, "ip4-lookup")		\
+#define foreach_hanat_worker_slow_next		\
+  _(IP4_LOOKUP, "ip4-lookup")			\
   _(DROP, "error-drop")
 
 typedef enum {
@@ -50,7 +50,9 @@ typedef enum {
 
 
 #define foreach_hanat_protocol_input_next	\
-  _(DROP, "error-drop")
+  _(DROP, "error-drop")				\
+  _(WORKER, "hanat-worker")			\
+  _(GRE4_INPUT, "hanat-gre4-input")
 
 typedef enum {
 #define _(s, n) HANAT_PROTOCOL_INPUT_NEXT_##s,
@@ -281,7 +283,6 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
 {
   hanat_session_key_t key;
   hanat_session_t *s;
-  vlib_main_t *vm = vlib_get_main();
 
   hanat_key_from_ip(fib_index, ip, &key);
   /* Check if session already exists */
@@ -301,7 +302,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
      * - If existing buffer, send buffer to drop node, and enqueue current one
      */
     if (s->entry.buffer) {
-      clib_warning("OLE Buffer exists. Silently discard");
+      vlib_main_t *vm = vlib_get_main();
       vlib_buffer_free(vm, &s->entry.buffer, 1);
       *rv = HANAT_WORKER_SLOW_QUEUED_DROPPED;
     }
@@ -343,10 +344,11 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	  ip4_address_t gre0 = {0};
 
 	  /* speculatively enqueue b0 to the current next frame */
-	  bi0 = from[0];
-
+	  bi0 = to_next[0] = from[0];
 	  from += 1;
 	  n_left_from -= 1;
+	  to_next += 1;
+	  n_left_to_next -= 1;
 
 	  b0 = vlib_get_buffer (vm, bi0);
 
@@ -383,20 +385,23 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	    vlib_buffer_advance(b0, -header_len);
 	  }
 	  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_SLOW_MAPPER_REQUEST, 1);
+	  n_left_to_next++;
+	  to_next--;
+
+	  b0->flags &= ~VLIB_BUFFER_IS_TRACED; /* Trace doesn't work for buffered packets */
 	  continue;
 
 	  /* Fall through to failure */
 	drop0:
-	  b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
-	  next0 = HANAT_WORKER_SLOW_NEXT_DROP;
 	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			     && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
 	    hanat_worker_slow_trace_t *t =
 	      vlib_add_trace (vm, node, b0, sizeof (*t));
 	  }
-	  to_next[0] = bi0;
-	  to_next += 1;
-	  n_left_to_next -= 1;
+
+	  b0->error = node->errors[HANAT_WORKER_SLOW_NO_MAPPER];
+	  next0 = HANAT_WORKER_SLOW_NEXT_DROP;
+
 	  /* verify speculative enqueue, maybe switch current next frame */
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next,
@@ -405,7 +410,6 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
-  //send_protocol_requests();
   return frame->n_vectors;
 }
 
@@ -425,6 +429,32 @@ hanat_worker_slow_tunnel (vlib_main_t * vm,
   return hanat_worker_slow_inline(vm, node, frame, true /* tunnel */);
 }
 
+
+static void
+hanat_send_to_node(vlib_main_t *vm, u32 *pi_vector,
+		   vlib_node_runtime_t *node, /* vlib_error_t *error, */
+		   u32 next)
+{
+  u32 n_left_from, *from, next_index, *to_next, n_left_to_next;
+  from = pi_vector;
+  n_left_from = vec_len(pi_vector);
+  next_index = node->cached_next_index;
+  while (n_left_from > 0) {
+    vlib_get_next_frame(vm, node, next_index, to_next, n_left_to_next);
+    while (n_left_from > 0 && n_left_to_next > 0) {
+      u32 pi0 = to_next[0] = from[0];
+      from += 1;
+      n_left_from -= 1;
+      to_next += 1;
+      n_left_to_next -= 1;
+      //vlib_buffer_t *p0 = vlib_get_buffer(vm, pi0);
+      //p0->error = *error;
+      vlib_validate_buffer_enqueue_x1(vm, node, next_index, to_next, n_left_to_next, pi0, next);
+    }
+    vlib_put_next_frame(vm, node, next_index, n_left_to_next);
+  }
+}
+
 /*
  * Receive instructions from mapper
  * Do hand-off to owning worker?
@@ -442,6 +472,8 @@ hanat_protocol_input (vlib_main_t * vm,
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
   next_index = node->cached_next_index;
+  u32 *to_gre4_input = 0;
+  u32 *to_hanat_worker = 0;
 
   while (n_left_from > 0)
     {
@@ -510,9 +542,9 @@ hanat_protocol_input (vlib_main_t * vm,
 	      if (s->entry.buffer) {
 		vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
 		if (s->entry.flags & HANAT_SESSION_FLAG_TUNNEL)
-		  give_to_frame(hm->hanat_gre4_input_node_index, s->entry.buffer);
+		  vec_add1(to_gre4_input, s->entry.buffer);
 		else
-		  give_to_frame(hm->hanat_worker_node_index, s->entry.buffer);
+		  vec_add1(to_hanat_worker, s->entry.buffer);
 		s->entry.buffer = 0;
 	      }
 	    }
@@ -528,11 +560,10 @@ hanat_protocol_input (vlib_main_t * vm,
 	  b0->error = node->errors[error0];
 
 	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
-			     && (b0->flags & VLIB_BUFFER_IS_TRACED)))
-	    {
+			     && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
 	      hanat_worker_slow_trace_t *t =
 		vlib_add_trace (vm, node, b0, sizeof (*t));
-	    }
+	  }
 
 	  /* verify speculative enqueue, maybe switch current next frame */
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
@@ -543,6 +574,10 @@ hanat_protocol_input (vlib_main_t * vm,
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
 
+  hanat_send_to_node(vm, to_hanat_worker, node, HANAT_PROTOCOL_INPUT_NEXT_WORKER);
+  hanat_send_to_node(vm, to_gre4_input, node, HANAT_PROTOCOL_INPUT_NEXT_GRE4_INPUT);
+  vec_free(to_hanat_worker);
+  vec_free(to_gre4_input);
   return frame->n_vectors;
 }
 

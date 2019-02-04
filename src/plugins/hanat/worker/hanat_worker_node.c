@@ -298,15 +298,12 @@ hanat_worker (vlib_main_t * vm,
 	    cache_miss++;
 	  }
 
-	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
-			     && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
-	    hanat_worker_trace_t *t =
-	      vlib_add_trace (vm, node, b0, sizeof (*t));
-	    
+          if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
+                             && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
+	    hanat_worker_trace_t *t = vlib_add_trace (vm, node, b0, sizeof(*t));
 	    t->src = ip0->src_address;
 	    t->dst = ip0->dst_address;
 	    t->protocol = ip0->protocol;
-
 	  }
 
 	  /* verify speculative enqueue, maybe switch current next frame */
@@ -404,8 +401,9 @@ hanat_gre4_input (vlib_main_t * vm,
 	    next0 = HANAT_GRE4_INPUT_NEXT_DROP;
 	  }
 
-	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED)) {
-	      hanat_gre4_input_trace_t *tr = vlib_add_trace (vm, node, b0, sizeof(*tr));
+          if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
+                             && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
+	    hanat_gre4_input_trace_t *tr = vlib_add_trace (vm, node, b0, sizeof(*tr));
 	  }
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next,
