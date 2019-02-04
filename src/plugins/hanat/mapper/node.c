@@ -81,6 +81,7 @@ format_hanat_state_sync_trace (u8 * s, va_list * args)
 
 typedef enum
 {
+  HANAT_STATE_SYNC_NEXT_IP4_LOOKUP,
   HANAT_STATE_SYNC_NEXT_DROP,
   HANAT_STATE_SYNC_N_NEXT,
 } hanat_state_sync_next_t;
@@ -570,47 +571,64 @@ static uword
 hanat_state_sync_node_fn (vlib_main_t * vm,
 			  vlib_node_runtime_t * node, vlib_frame_t * frame)
 {
-  u32 n_left_from, *from, *to_next_drop;
+  u32 n_left_from, *from, next_index, *to_next;
   f64 now = vlib_time_now (vm);
   u32 thread_index = vm->thread_index;
+  u32 pkts_processed = 0;
+  ip4_main_t *i4m = &ip4_main;
+  u8 host_config_ttl = i4m->host_config.ttl;
 
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
+  next_index = node->cached_next_index;
 
   while (n_left_from > 0)
     {
-      u32 n_left_to_next_drop;
+      u32 n_left_to_next;
 
-      vlib_get_next_frame (vm, node, HANAT_STATE_SYNC_NEXT_DROP,
-			   to_next_drop, n_left_to_next_drop);
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
-      while (n_left_from > 0 && n_left_to_next_drop > 0)
+      while (n_left_from > 0 && n_left_to_next > 0)
 	{
-	  u32 bi0;
+	  u32 bi0, next0, src_addr0, dst_addr0;;
 	  vlib_buffer_t *b0;
 	  hanat_state_sync_message_header_t *h0;
 	  hanat_state_sync_event_t *e0;
-	  u16 event_count0;
-	  u32 error0;
+	  u16 event_count0, src_port0, dst_port0, old_len0;
+	  ip4_header_t *ip0;
+	  udp_header_t *udp0;
+	  ip_csum_t sum0;
 
 	  bi0 = from[0];
+	  to_next[0] = bi0;
 	  from += 1;
+	  to_next += 1;
 	  n_left_from -= 1;
-	  to_next_drop[0] = bi0;
-	  to_next_drop += 1;
-	  n_left_to_next_drop -= 1;
+	  n_left_to_next -= 1;
 
 	  b0 = vlib_get_buffer (vm, bi0);
 	  h0 = vlib_buffer_get_current (b0);
+	  vlib_buffer_advance (b0, -sizeof (*udp0));
+	  udp0 = vlib_buffer_get_current (b0);
+	  vlib_buffer_advance (b0, -sizeof (*ip0));
+	  ip0 = vlib_buffer_get_current (b0);
+
+	  next0 = HANAT_STATE_SYNC_NEXT_DROP;
 
 	  if (h0->version != HANAT_STATE_SYNC_VERSION)
 	    {
-	      error0 = HANAT_STATE_SYNC_ERROR_BAD_VERSION;
+	      b0->error = node->errors[HANAT_STATE_SYNC_ERROR_BAD_VERSION];
 	      goto done0;
 	    }
 
-	  error0 = HANAT_STATE_SYNC_ERROR_PROCESSED;
 	  event_count0 = clib_net_to_host_u16 (h0->count);
+	  if (!event_count0 && (h0->flags & HANAT_STATE_SYNC_FLAG_ACK))
+	    {
+	      hanat_state_sync_ack_recv (h0->sequence_number);
+	      b0->error = node->errors[HANAT_STATE_SYNC_ERROR_PROCESSED];
+	      goto done0;
+	    }
+
 	  e0 = (hanat_state_sync_event_t *) (h0 + 1);
 
 	  while (event_count0)
@@ -624,8 +642,40 @@ hanat_state_sync_node_fn (vlib_main_t * vm,
 					      e0->opaque_len);
 	    }
 
+	  next0 = HANAT_STATE_SYNC_NEXT_IP4_LOOKUP;
+	  pkts_processed++;
+
+	  b0->current_length = sizeof (*ip0) + sizeof (*udp0) + sizeof (*h0);
+
+	  src_addr0 = ip0->src_address.data_u32;
+	  dst_addr0 = ip0->dst_address.data_u32;
+	  ip0->src_address.data_u32 = dst_addr0;
+	  ip0->dst_address.data_u32 = src_addr0;
+	  old_len0 = ip0->length;
+	  ip0->length = clib_host_to_net_u16 (b0->current_length);
+
+	  sum0 = ip0->checksum;
+	  sum0 = ip_csum_update (sum0, ip0->ttl, host_config_ttl,
+				 ip4_header_t, ttl);
+	  ip0->ttl = host_config_ttl;
+	  sum0 =
+	    ip_csum_update (sum0, old_len0, ip0->length, ip4_header_t,
+			    length);
+	  ip0->checksum = ip_csum_fold (sum0);
+
+	  udp0->checksum = 0;
+	  src_port0 = udp0->src_port;
+	  dst_port0 = udp0->dst_port;
+	  udp0->src_port = dst_port0;
+	  udp0->dst_port = src_port0;
+	  udp0->length =
+	    clib_host_to_net_u16 (b0->current_length - sizeof (*ip0));
+
+	  h0->flags = HANAT_STATE_SYNC_FLAG_ACK;
+	  h0->count = 0;
+	  hanat_state_sync_ack_send_increment_counter (thread_index);
+
 	done0:
-	  b0->error = node->errors[error0];
 	  if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
 			     && (b0->flags & VLIB_BUFFER_IS_TRACED)))
 	    {
@@ -637,11 +687,17 @@ hanat_state_sync_node_fn (vlib_main_t * vm,
 	      t->addr.as_u32 = ip->src_address.data_u32;
 	    }
 
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next,
+					   bi0, next0);
 	}
 
-      vlib_put_next_frame (vm, node, HANAT_STATE_SYNC_NEXT_DROP,
-			   n_left_to_next_drop);
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
+
+  vlib_node_increment_counter (vm, hanat_state_sync_node.index,
+			       HANAT_STATE_SYNC_ERROR_PROCESSED,
+			       pkts_processed);
 
   return frame->n_vectors;
 }
@@ -657,6 +713,7 @@ VLIB_REGISTER_NODE (hanat_state_sync_node) = {
   .error_strings = hanat_state_sync_error_strings,
   .n_next_nodes = HANAT_STATE_SYNC_N_NEXT,
   .next_nodes = {
+     [HANAT_STATE_SYNC_NEXT_IP4_LOOKUP] = "ip4-lookup",
      [HANAT_STATE_SYNC_NEXT_DROP] = "error-drop",
   },
 };
