@@ -22,6 +22,7 @@
 #include <vppinfra/bihash_template.h>
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/ip/ip6_packet.h>
+#include <vnet/udp/udp_packet.h>
 #include "../protocol/hanat_protocol.h"
 
 #define HANAT_CACHE_EXPIRY_TIMER	100 /* Seconds */
@@ -66,6 +67,7 @@ typedef enum {
   HANAT_SESSION_FLAG_INCOMPLETE = 0x1,
   HANAT_SESSION_FLAG_TUNNEL     = 0x2,
 } hanat_session_entry_flags_t;
+
 /* Session cache entries */
 typedef struct {
   /* What to translate to */
@@ -90,6 +92,7 @@ typedef struct {
 typedef struct {
   hanat_session_key_t key; // USED?
   hanat_session_entry_t entry;
+  u32 mapper_id;
 } hanat_session_t;
 
 typedef struct {
@@ -129,6 +132,12 @@ typedef struct
 } hanat_pool_t;
 
 typedef struct {
+  ip4_header_t ip;
+  udp_header_t udp;
+  hanat_header_t hanat;
+}  __attribute__((packed))hanat_ip_udp_hanat_header_t;
+
+typedef struct {
   hanat_db_t db;
   hanat_pool_t pool_db;
   u16 udp_port;
@@ -148,6 +157,9 @@ typedef struct {
 
   u32 cache_expiry_timer;	/* In seconds */
   u32 cache_refresh_interval;	/* In seconds */
+
+  vlib_packet_template_t hanat_protocol_template;
+
 } hanat_worker_main_t;
 
 extern hanat_worker_main_t hanat_worker_main;
@@ -181,5 +193,19 @@ u32 hanat_lpm_64_lookup (hanat_pool_t *lpm, u32 fib_index, u32 address);
 
 u32 hanat_get_interface_mode(u32 sw_if_index);
 int hanat_session_stale_cb(clib_bihash_kv_16_8_t *kv, void *arg);
+
+static inline void
+give_to_frame(u32 node_index, u32 bi)
+{
+  vlib_main_t *vm = vlib_get_main();
+  vlib_frame_t *f;
+  u32 *to_next;
+  f = vlib_get_frame_to_node (vm, node_index);
+  to_next = vlib_frame_vector_args (f);
+  to_next[0] = bi;
+  f->n_vectors = 1;
+  vlib_put_frame_to_node (vm, node_index, f);
+}
+
 
 #endif

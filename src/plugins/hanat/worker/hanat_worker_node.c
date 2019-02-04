@@ -58,7 +58,8 @@ typedef enum {
  */
 #define foreach_hanat_worker_counters		\
   _(CACHE_HIT_PACKETS, "cache hit")		\
-  _(CACHE_MISS_PACKETS, "cache miss")
+  _(CACHE_MISS_PACKETS, "cache miss")		\
+  _(CACHE_REFRESH_SENT, "session refresh")
 
 typedef enum
 {
@@ -202,10 +203,40 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
  * Send session refresh packet
  */
 static void
-hanat_refresh_session (hanat_session_t *s)
+hanat_refresh_session (hanat_session_t *session)
 {
-  clib_warning("SESSION REFRESH NEEDED");
-  return;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  vlib_main_t *vm = vlib_get_main();
+  u32 bi;
+  hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, session->mapper_id);
+
+  hanat_ip_udp_hanat_header_t *h = vlib_packet_template_get_packet (vm, &hm->hanat_protocol_template, &bi);
+  if (!h) return;
+
+  h->ip.src_address.as_u32 = pe->src.ip4.as_u32;
+  h->ip.dst_address.as_u32 = pe->mapper.ip4.as_u32;
+  h->udp.src_port = htons(hm->udp_port);
+  h->udp.dst_port = htons(pe->udp_port);
+
+  hanat_option_session_refresh_t *ref = (hanat_option_session_refresh_t *) (&h->hanat + 1);
+  ref->desc.sa.as_u32 = session->key.sa.as_u32;
+  ref->desc.da.as_u32 = session->key.da.as_u32;
+  ref->desc.sp = session->key.sp;
+  ref->desc.dp = session->key.dp;
+  ref->desc.proto = session->key.proto;
+  ref->desc.vni = htonl(session->entry.fib_index) >> 8;
+
+  ref->flags = 0;
+  ref->packets = 0;
+  ref->bytes = 0;
+  u16 len = sizeof(*h) + sizeof(hanat_option_session_refresh_t);
+  h->ip.length = htons(len);
+  h->ip.checksum = ip4_header_checksum (&h->ip);
+  h->udp.length = htons (len - sizeof(ip4_header_t));
+  h->udp.checksum = 0;
+
+  /* Add to frame */
+  give_to_frame(hm->ip4_lookup_node_index, bi);
 }
 
 static bool
@@ -222,11 +253,6 @@ hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, f64 now,
   if (now >= s->entry.last_heard + hm->cache_expiry_timer) {
     clib_warning("TODO: Entry has expired. Drop cache entry and resend binding request");
     return false;
-  }
-  if (now >= s->entry.last_refreshed + hm->cache_refresh_interval) {
-    clib_warning("TODO: Entry needs refresh.");
-    hanat_refresh_session(s);
-    s->entry.last_refreshed = now;
   }
 
   s->entry.last_heard = now;
@@ -308,6 +334,14 @@ hanat_worker (vlib_main_t * vm,
 	    vnet_feature_next(&next0, b0);
 	    if (session->entry.gre.as_u32)
 	      add_gre_encap(b0, ip0, session->entry.gre, out_fib_index0);
+
+	    if (now >= session->entry.last_refreshed + hm->cache_refresh_interval) {
+	      vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_REFRESH_SENT, 1);
+	      clib_warning("TODO: Entry needs refresh.");
+	      hanat_refresh_session(session);
+	      session->entry.last_refreshed = now;
+	    }
+
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
 	    cache_hit++;
 	  } else {

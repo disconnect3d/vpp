@@ -159,11 +159,11 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 
   hanat_worker_main_t *hm = &hanat_worker_main;
   hanat_pool_entry_t *poolentry;
   u32 mi = hanat_lpm_64_lookup (&hm->pool_db, pool_id, ntohl(prefix->as_u32));
-  if (mi != ~0) {
-    clib_warning("Exists already");
-    return -1;
-  }
   if (is_add) {
+    if (mi != ~0) {
+      clib_warning("Exists already");
+      return -1;
+    }
     pool_get_zero (hm->pool_db.pools, poolentry);
     *mapper_index = poolentry - hm->pool_db.pools;
 
@@ -209,6 +209,22 @@ hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
   return rv;
 }
 
+static void
+hanat_protocol_template_init(vlib_packet_template_t *hanat_protocol_template)
+{
+  vlib_main_t *vm = vlib_get_main();
+
+  hanat_ip_udp_hanat_header_t h;
+  clib_memset(&h, 0, sizeof(h));
+  h.ip.ip_version_and_header_length = 0x45;
+  h.ip.flags_and_fragment_offset = clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
+  h.ip.ttl = 64;
+  h.ip.protocol = IP_PROTOCOL_UDP;
+
+  vlib_packet_template_init (vm, hanat_protocol_template, &h, sizeof(h), /* alloc chunk size */ 8,
+			     "hanat protocol");
+}
+
 int
 hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer, u32 cache_refresh_interval)
 {
@@ -219,6 +235,8 @@ hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer
   hm->cache_expiry_timer = cache_expiry_timer == 0 ? HANAT_CACHE_EXPIRY_TIMER : cache_expiry_timer;
   hm->cache_refresh_interval = cache_refresh_interval == 0 ? HANAT_CACHE_REFRESH_INTERVAL : cache_refresh_interval;
   hm->udp_port = udp_port;
+
+  hanat_protocol_template_init(&hm->hanat_protocol_template);
 
   if (gre_src->as_u32 > 0) {
     int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);

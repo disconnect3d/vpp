@@ -167,19 +167,6 @@ hanat_get_session_index(hanat_session_t *s)
   return s - hm->db.sessions;
 }
 
-static void
-give_to_frame(u32 node_index, u32 bi)
-{
-  vlib_main_t *vm = vlib_get_main();
-  vlib_frame_t *f;
-  u32 *to_next;
-  f = vlib_get_frame_to_node (vm, node_index);
-  to_next = vlib_frame_vector_args (f);
-  to_next[0] = bi;
-  f->n_vectors = 1;
-  vlib_put_frame_to_node (vm, node_index, f);
-}
-
 static int
 send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
 			    hanat_pool_entry_t *pe, hanat_session_t *session, u32 mode,
@@ -251,7 +238,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
 }
 
 static void
-hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
+hanat_worker_cache_update(hanat_session_t *s, f64 now, hanat_instructions_t instructions,
 			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
 			  u16 sport, u16 dport, ip4_address_t gre)
 {
@@ -276,6 +263,7 @@ hanat_worker_cache_update(hanat_session_t *s, hanat_instructions_t instructions,
     entry->l4_checksum = l4_checksum_delta(entry->instructions, c, key->sp, entry->post_sp, key->dp, entry->post_dp);
   entry->checksum = c;
 
+  entry->last_heard = entry->last_refreshed = now;
 }
 
 static hanat_session_t *
@@ -377,6 +365,7 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	  if (!pe) goto drop0;
 	  u32 rv = 0;
 	  hanat_session_t *s = hanat_worker_cache_add_incomplete(&hm->db, vni0, ip0, bi0, tunnel, &rv);
+	  s->mapper_id = mid0;
 	  if (rv)
 	    vlib_node_increment_counter (vm, node->node_index, rv, 1);
 	  send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
@@ -469,6 +458,8 @@ hanat_protocol_input (vlib_main_t * vm,
   hanat_protocol_input_next_t next_index;
   hanat_worker_main_t *hm = &hanat_worker_main;
 
+ f64 now = vlib_time_now (vm);
+
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
   next_index = node->cached_next_index;
@@ -535,7 +526,7 @@ hanat_protocol_input (vlib_main_t * vm,
 	      if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
 		memcpy(&gre, sp->opaque_data, 4);
 		
-	      hanat_worker_cache_update(s, ntohl(sp->instructions), ntohl(sp->fib_index),
+	      hanat_worker_cache_update(s, now, ntohl(sp->instructions), ntohl(sp->fib_index),
 					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
 
 	      /* Put cached packet back to fast worker node */

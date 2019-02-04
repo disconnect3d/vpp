@@ -92,14 +92,17 @@ hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip)
 int
 hanat_session_stale_cb(clib_bihash_kv_16_8_t *kv, void *arg)
 {
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
   vlib_main_t *vm = vlib_get_main();
   hanat_db_t *db = arg;
   hanat_session_t *s = pool_elt_at_index (db->sessions, kv->value);
   f64 now = vlib_time_now (vm);
 
-  if (now >= s->entry.last_heard + 10) {
+  if (now >= s->entry.last_heard + hm->cache_expiry_timer) {
     /* Session timed out, reusing!!! */
     // Send session refresh data
+    // TODO: error counter
     clib_warning("Reusing session");
     pool_put_index(db->sessions, kv->value);
 
