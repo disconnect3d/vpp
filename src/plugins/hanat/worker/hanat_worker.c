@@ -154,7 +154,7 @@ hanat_worker_cache_clear (void)
 
 int
 hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
-			    ip46_address_t *mapper, ip46_address_t *src, u16 udp_port, u32 *mapper_index)
+			    ip46_address_t *src, ip46_address_t *mapper, u16 udp_port, u32 *mapper_index)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   hanat_pool_entry_t *poolentry;
@@ -198,10 +198,11 @@ hanat_worker_mapper_buckets(u32 n, u32 mapper_index[])
 
   vec_validate (hm->pool_db.lb_buckets, n);
   for (i = 0; i < n; i++) {
-    if (pool_is_free_index(hm->pool_db.pools, ntohl(mapper_index[i]))) {
-      rv = -1;
-      break;
-    }
+    if (pool_is_free_index(hm->pool_db.pools, ntohl(mapper_index[i])))
+      {
+        rv = -1;
+        break;
+      }
     hm->pool_db.lb_buckets[i] = ntohl(mapper_index[i]);
   }
   hm->pool_db.n_buckets = n;
@@ -258,6 +259,8 @@ hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer
     hm->gre_template = ip;
     ip4_register_protocol(IP_PROTOCOL_GRE, hanat_gre4_input_node.index);
   }
+
+  hm->udp_port = udp_port;
 
   return 0;
 }
