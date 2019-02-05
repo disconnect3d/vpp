@@ -76,6 +76,7 @@ void hanat_state_sync_event_add (hanat_state_sync_event_t * event,
 void hanat_state_sync_flush (vlib_main_t * vm);
 
 void hanat_state_sync_ack_recv (u32 seq);
+
 void hanat_state_sync_ack_send_increment_counter (u32 thread_index);
 
 #endif /* __included_hanat_state_sync_h__ */
