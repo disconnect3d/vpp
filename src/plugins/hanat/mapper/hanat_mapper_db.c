@@ -15,6 +15,7 @@
 
 #include "hanat_mapper_db.h"
 #include "hanat_mapper.h"
+#include "hanat_state_sync.h"
 
 typedef struct
 {
@@ -402,11 +403,28 @@ is_session_idle (clib_bihash_kv_16_8_t * kv, void *arg, u8 in2out)
   clib_bihash_kv_16_8_t d_kv;
   hanat_mapper_mapping_t *mapping;
   hanat_mapper_user_t *user;
+  hanat_state_sync_event_t event;
+  u32 failover_index;
 
   session = pool_elt_at_index (db->sessions, kv->value);
   if (ctx->now >= session->expire)
     {
       mapping = pool_elt_at_index (db->mappings, session->mapping_index);
+
+      // state sync
+      failover_index = hanat_session_get_failover_index (session);
+      if (failover_index != ~0)
+	{
+	  clib_memset (&event, 0, sizeof (event));
+	  event.event_type = HANAT_STATE_SYNC_DEL;
+	  event.in_l_addr = mapping->in_addr.as_u32;
+	  event.in_r_addr = session->in_r_addr.as_u32;
+	  event.in_l_port = mapping->in_port;
+	  event.in_r_port = session->in_r_port;
+	  event.tenant_id = mapping->tenant_id;
+	  event.pool_id = mapping->pool_id;
+	  event.protocol = session->proto;
+	}
 
       session_key.proto = session->proto;
       if (in2out)

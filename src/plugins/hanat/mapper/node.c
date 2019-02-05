@@ -107,19 +107,6 @@ static char *hanat_state_sync_error_strings[] = {
 vlib_node_registration_t hanat_mapper_node;
 vlib_node_registration_t hanat_state_sync_node;
 
-always_inline u32
-hanat_session_get_failover_index (hanat_mapper_session_t * session)
-{
-  hanat_mapper_main_t *nm = &hanat_mapper_main;
-  hanat_mapper_addr_pool_t *pool;
-  hanat_mapper_mapping_t *mapping;
-
-  mapping = pool_elt_at_index (nm->db.mappings, session->mapping_index);
-  pool = get_pool_by_pool_id (mapping->pool_id);
-
-  return pool->failover_index;
-}
-
 always_inline void
 hanat_session_refresh_process (vlib_main_t * vm,
 			       hanat_option_session_refresh_t * req)
@@ -372,7 +359,6 @@ hanat_session_request_process (vlib_main_t * vm,
 	  event.tenant_id = clib_host_to_net_u32 (tenant_id);
 	  event.pool_id = clib_host_to_net_u32 (pool_id);
 	  event.protocol = protocol;
-	  event.event_type = HANAT_STATE_SYNC_ADD;
 	  event.opaque_len = (u8) vec_len (session->opaque_data);
 	  hanat_state_sync_event_add (&event, session->opaque_data, 0,
 				      failover_index, vm->thread_index);
