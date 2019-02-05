@@ -142,6 +142,21 @@ ip_proto_to_hanat_mapper_proto (u8 ip_proto)
   return proto;
 }
 
+always_inline u8
+hanat_mapper_proto_to_ip_proto (hanat_mapper_protocol_t proto)
+{
+  u8 ip_proto = ~0;
+
+  ip_proto =
+    (proto == HANAT_MAPPER_PROTOCOL_UDP) ? IP_PROTOCOL_UDP : ip_proto;
+  ip_proto =
+    (proto == HANAT_MAPPER_PROTOCOL_TCP) ? IP_PROTOCOL_TCP : ip_proto;
+  ip_proto =
+    (proto == HANAT_MAPPER_PROTOCOL_ICMP) ? IP_PROTOCOL_ICMP : ip_proto;
+
+  return ip_proto;
+}
+
 always_inline void
 session_reset_timeout (hanat_mapper_main_t * nm,
 		       hanat_mapper_session_t * session, f64 now)
