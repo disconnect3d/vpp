@@ -375,7 +375,7 @@ send_hanat_mapper_user_session_details (hanat_mapper_session_t * session,
   rmp->in_r_port = session->in_r_port;
   rmp->out_l_port = mapping->out_port;
   rmp->out_r_port = session->out_r_port;
-  rmp->protocol = session->proto;
+  rmp->protocol = hanat_mapper_proto_to_ip_proto (session->proto);
   rmp->tenant_id = clib_host_to_net_u32 (mapping->tenant_id);
   rmp->pool_id = clib_host_to_net_u32 (mapping->pool_id);
   rmp->total_bytes = clib_host_to_net_u64 (session->total_bytes);

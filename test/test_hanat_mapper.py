@@ -286,6 +286,21 @@ class TestHANATmapper(VppTestCase):
         self.assertEqual(p1[HANATSessionBinding].dst, '10.1.1.2')
         self.assertEqual(p1[HANATSessionBinding].dport, 1000)
 
+        sessions = self.vapi.papi.hanat_mapper_user_session_dump(
+            address='10.0.0.1', tenant_id=0)
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(str(sessions[0].in_l_addr), '10.0.0.1')
+        self.assertEqual(str(sessions[0].in_r_addr), '10.1.1.2')
+        self.assertEqual(sessions[0].in_l_port, 1000)
+        self.assertEqual(sessions[0].in_r_port, 1000)
+        self.assertEqual(str(sessions[0].out_l_addr), '10.1.1.1')
+        self.assertEqual(str(sessions[0].out_r_addr), '10.1.1.2')
+        self.assertEqual(sessions[0].out_l_port,
+                         p1[HANATSessionBinding].sport)
+        self.assertEqual(sessions[0].tenant_id, 0)
+        self.assertEqual(sessions[0].pool_id, 2)
+        self.assertEqual(sessions[0].protocol, IP_PROTOS.udp)
+
         # out2in
         p2 = (Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac) /
               IP(src=self.pg1.remote_ip4, dst=self.pg1.local_ip4) /
