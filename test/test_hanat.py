@@ -23,7 +23,7 @@ class TestHANAT(VppTestCase):
             cls.interfaces = list(cls.pg_interfaces)
             cls.mapper_port = 1234
             cls.worker_port = 4321
-            cls.pool_id = 0
+            cls.pool_id = 1
 
             for i in cls.interfaces:
                 i.admin_up()
@@ -75,6 +75,7 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_cache_clear()
         self.assertEqual(rv.retval, 0)
 
+        ## in2out packet
         # create packet that should be translated based on mapper config
         pkt = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
                IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
@@ -88,7 +89,7 @@ class TestHANAT(VppTestCase):
 
         # HANAT Session Request packet
         # forward packet from worker to mapper
-        pkt = self.swap_and_send(self.pg2)
+        pkt = self.capture_swap_and_send(self.pg2)
         self.logger.error(pkt.show2())
 
         self.assertEqual(pkt[IP].src, self.pg2.remote_ip4)
@@ -102,7 +103,7 @@ class TestHANAT(VppTestCase):
 
         # HANAT Session Binding packet
         # forward packet from mapper to worker
-        pkt = self.swap_and_send(self.pg2)
+        pkt = self.capture_swap_and_send(self.pg2)
         self.logger.error(pkt.show2())
 
         self.assertEqual(pkt[IP].src, self.pg2.remote_ip4)
@@ -115,7 +116,7 @@ class TestHANAT(VppTestCase):
 
         sport = pkt[HANATSessionBinding].sport
 
-        # get packet after NAT translation
+        # get packet after NAT translation (in2out)
         pkt =  self.pg1.get_capture(1)[0]
 
         self.logger.error(pkt.show2())
@@ -126,11 +127,31 @@ class TestHANAT(VppTestCase):
         self.assertEqual(pkt[TCP].sport, sport)
         self.assertEqual(pkt[TCP].dport, 80)
 
-        # TODO: now send out2in packet
+        ## out2in packet (aka reply)
+        pkt = self.swap_and_send(self.pg1, pkt, True)
+        self.logger.error(pkt.show2())
 
-    def swap_and_send(self, pg, idx=0):
+        # HANAT Session Request packet
+        # forward packet from worker to mapper
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
 
-        pkt = pg.get_capture(1)[idx]
+        # HANAT Session Binding packet
+        # forward packet from mapper to worker
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
+
+        # get the packet after NAT translation (out2in)
+        pkt = self.pg0.get_capture(1)[0]
+
+        self.logger.error(pkt.show2())
+
+        self.assertEqual(pkt[IP].src, self.pg1.remote_ip4)
+        self.assertEqual(pkt[IP].dst, self.pg0.remote_ip4)
+        self.assertEqual(pkt[TCP].sport, 80)
+        self.assertEqual(pkt[TCP].dport, 8000)
+
+    def swap_and_send(self, pg, pkt, swap_ports=False):
 
         # swap ethernet header src&dst
         tmp = pkt.src
@@ -142,9 +163,22 @@ class TestHANAT(VppTestCase):
         pkt[IP].src = pkt[IP].dst
         pkt[IP].dst = tmp
 
+        # swap tcp/udp header sport&dport
+        if swap_ports and (TCP in pkt or UDP in pkt):
+            proto = TCP if TCP in pkt else UDP
+            tmp = pkt[proto].sport
+            pkt[proto].sport = pkt[proto].dport
+            pkt[proto].dport = tmp
+
         pg.add_stream(pkt)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
 
         return pkt
+
+    def capture_swap_and_send(self, pg, idx=0):
+
+        pkt = pg.get_capture(1)[idx]
+
+        return self.swap_and_send(pg, pkt)
 

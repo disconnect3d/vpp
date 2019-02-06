@@ -147,25 +147,21 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
                                                         pool_id=100,
                                                         pool='130.67.0.0/24',
-                                                        src='1.1.1.1',
-                                                        mapper='1.2.3.4',
+                                                        src='1.2.3.4',
+                                                        mapper='1.1.1.1',
                                                         udp_port=1234)
-
-
         self.assertEqual(rv.retval, 0)
-        print('RV', rv)
+
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
                                                         pool_id=200,
                                                         pool='130.67.1.0/24',
                                                         src=self.pg2.local_ip4,
                                                         mapper=self.pg2.remote_ip4,
                                                         udp_port=1234)
-
-        print('RV', rv)
         self.assertEqual(rv.retval, 0)
-        buckets = [rv.mapper_index]*1024
+
+        buckets = [rv.mapper_index] * 1024
         rv = self.vapi.papi.hanat_worker_mapper_buckets(mapper_index=buckets)
-        print('RV', rv)
         self.assertEqual(rv.retval, 0)
 
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE

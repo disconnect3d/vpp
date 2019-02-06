@@ -116,6 +116,7 @@ hanat_session_refresh_process (vlib_main_t * vm,
 
   ip4_address_t in_l_addr, out_r_addr;
   u32 tenant_id;
+  u8 event_type;
   u8 protocol;
   u8 is_in2out;
   f64 now;
@@ -136,27 +137,51 @@ hanat_session_refresh_process (vlib_main_t * vm,
 				      protocol, tenant_id, is_in2out);
   if (PREDICT_TRUE (session != 0))
     {
-      // TODO: based on flag refresh/delete session (session complete)
-      // this is refresh part
-      now = vlib_time_now (vm);
-      session_reset_timeout (nm, session, now);
-      // state sync
       failover_index = hanat_session_get_failover_index (session);
-      if (failover_index != ~0)
-	{
-	  clib_memset (&event, 0, sizeof (event));
-	  event.event_type = HANAT_STATE_SYNC_KEEPALIVE;
-	  event.in_l_addr = in_l_addr.as_u32;
-	  event.in_r_addr = out_r_addr.as_u32;
-	  event.in_l_port = req->desc.sp;
-	  event.in_r_port = req->desc.dp;
-	  event.protocol = protocol;
-	  event.tenant_id = tenant_id;
-	  event.total_bytes = clib_host_to_net_u64 (session->total_bytes);
-	  event.total_pkts = clib_host_to_net_u64 (session->total_pkts);
-	  hanat_state_sync_event_add (&event, 0, 0, failover_index,
-				      vm->thread_index);
-	}
+
+      if (PREDICT_TRUE (req->flags == HANAT_FLAGS_UPDATE))
+        {
+          now = vlib_time_now (vm);
+          session_reset_timeout (nm, session, now);
+
+          // TODO: check and ifx if needed how are req->packets and req->bytes populated
+          // they should contain only difference between last an current update send
+          session->total_pkts += req->packets;
+          session->total_bytes += req->bytes;
+
+          if (failover_index != ~0)
+	    {
+	      clib_memset (&event, 0, sizeof (event));
+	      event.event_type = HANAT_STATE_SYNC_KEEPALIVE;
+	      event.in_l_addr = in_l_addr.as_u32;
+	      event.in_r_addr = out_r_addr.as_u32;
+              event.in_l_port = req->desc.sp;
+	      event.in_r_port = req->desc.dp;
+	      event.protocol = protocol;
+	      event.tenant_id = tenant_id;
+	      event.total_bytes = clib_host_to_net_u64 (session->total_bytes);
+	      event.total_pkts = clib_host_to_net_u64 (session->total_pkts);
+	      hanat_state_sync_event_add (&event, 0, 0, failover_index,
+				          vm->thread_index);
+            }
+      else
+        {
+          hanat_mapper_session_free (&nm->db, session);
+
+          if (failover_index != ~0)
+	    {
+	      clib_memset (&event, 0, sizeof (event));
+	      event.event_type = HANAT_STATE_SYNC_DEL;
+	      event.in_l_addr = in_l_addr.as_u32;
+	      event.in_r_addr = out_r_addr.as_u32;
+	      event.in_l_port = req->desc.sp;
+	      event.in_r_port = req->desc.dp;
+	      event.protocol = protocol;
+	      event.tenant_id = tenant_id;
+	      hanat_state_sync_event_add (&event, 0, 0, failover_index,
+				          vm->thread_index);
+	    }
+        }
     }
 }
 
@@ -366,7 +391,9 @@ hanat_session_request_process (vlib_main_t * vm,
 	}
     }
   else
-    mapping = pool_elt_at_index (nm->db.mappings, session->mapping_index);
+    {
+      mapping = pool_elt_at_index (nm->db.mappings, session->mapping_index);
+    }
 
   if (is_in2out)
     {

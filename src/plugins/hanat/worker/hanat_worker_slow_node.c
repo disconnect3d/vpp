@@ -146,7 +146,7 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, u32 mode)
 
   if (mode == HANAT_WORKER_IF_OUTSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
-    mid = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(ip->dst_address.as_u32));
+    mid = hanat_lpm_64_lookup (&hm->pool_db, 0, ntohl(ip->dst_address.as_u32));
   }
   if (mode == HANAT_WORKER_IF_INSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
@@ -228,6 +228,7 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
   ip->length = htons(len);
   ip->checksum = ip4_header_checksum (ip);
   udp->length = htons (len - sizeof(ip4_header_t));
+  udp->checksum = 0;
 
   b->current_length = len;
 
