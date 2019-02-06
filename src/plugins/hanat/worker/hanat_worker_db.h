@@ -182,7 +182,7 @@ int l3_checksum_delta(hanat_instructions_t instructions,
 int l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
 		       u16 pre_sp, u16 post_sp, u16 pre_dp, u16 post_dp);
 
-int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
+int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *src, ip46_address_t *mapper, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 n, u32 mapper_index[]);
 int hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer, u32 cache_refresh_interval);
@@ -205,6 +205,31 @@ give_to_frame(u32 node_index, u32 bi)
   to_next[0] = bi;
   f->n_vectors = 1;
   vlib_put_frame_to_node (vm, node_index, f);
+}
+
+static inline void
+hanat_send_to_node(vlib_main_t *vm, u32 *pi_vector,
+		   vlib_node_runtime_t *node, /* vlib_error_t *error, */
+		   u32 next)
+{
+  u32 n_left_from, *from, next_index, *to_next, n_left_to_next;
+  from = pi_vector;
+  n_left_from = vec_len(pi_vector);
+  next_index = node->cached_next_index;
+  while (n_left_from > 0) {
+    vlib_get_next_frame(vm, node, next_index, to_next, n_left_to_next);
+    while (n_left_from > 0 && n_left_to_next > 0) {
+      u32 pi0 = to_next[0] = from[0];
+      from += 1;
+      n_left_from -= 1;
+      to_next += 1;
+      n_left_to_next -= 1;
+      //vlib_buffer_t *p0 = vlib_get_buffer(vm, pi0);
+      //p0->error = *error;
+      vlib_validate_buffer_enqueue_x1(vm, node, next_index, to_next, n_left_to_next, pi0, next);
+    }
+    vlib_put_next_frame(vm, node, next_index, n_left_to_next);
+  }
 }
 
 

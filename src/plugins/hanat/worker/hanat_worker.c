@@ -153,7 +153,7 @@ hanat_worker_cache_clear (void)
 }
 
 int
-hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
+hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address_t *prefix, u8 prefix_len,
 			    ip46_address_t *src, ip46_address_t *mapper, u16 udp_port, u32 *mapper_index)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;

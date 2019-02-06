@@ -419,32 +419,6 @@ hanat_worker_slow_tunnel (vlib_main_t * vm,
   return hanat_worker_slow_inline(vm, node, frame, true /* tunnel */);
 }
 
-
-static void
-hanat_send_to_node(vlib_main_t *vm, u32 *pi_vector,
-		   vlib_node_runtime_t *node, /* vlib_error_t *error, */
-		   u32 next)
-{
-  u32 n_left_from, *from, next_index, *to_next, n_left_to_next;
-  from = pi_vector;
-  n_left_from = vec_len(pi_vector);
-  next_index = node->cached_next_index;
-  while (n_left_from > 0) {
-    vlib_get_next_frame(vm, node, next_index, to_next, n_left_to_next);
-    while (n_left_from > 0 && n_left_to_next > 0) {
-      u32 pi0 = to_next[0] = from[0];
-      from += 1;
-      n_left_from -= 1;
-      to_next += 1;
-      n_left_to_next -= 1;
-      //vlib_buffer_t *p0 = vlib_get_buffer(vm, pi0);
-      //p0->error = *error;
-      vlib_validate_buffer_enqueue_x1(vm, node, next_index, to_next, n_left_to_next, pi0, next);
-    }
-    vlib_put_next_frame(vm, node, next_index, n_left_to_next);
-  }
-}
-
 /*
  * Receive instructions from mapper
  * Do hand-off to owning worker?

@@ -466,7 +466,8 @@ class TestHANAT(VppTestCase):
                 rx = self.send_and_expect(tx_interface, p*1, rx_interface)[0] # Or rx_interface
                 self.validate(rx[1], reply)
                 time.sleep(1)
-
+            self.pg_enable_capture(self.pg_interfaces)
+            rx = self.send_and_expect(tx_interface, p*1, rx_interface)[0] # Or rx_interface
         # Dump cache
         rv = self.vapi.papi.hanat_worker_cache_dump()
         self.assertEqual(len(rv), len(tests))

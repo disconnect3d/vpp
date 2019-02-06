@@ -114,7 +114,8 @@ class TestHANATmapper(VppTestCase):
         p = capture[0]
         self.assertEqual(p[HANATStateSync].sequence_number, 1)
         self.assertEqual(p[HANATStateSync].flags, 'ACK')
-        stats = self.statistics.get_counter('/hanat-mapper/ack-send')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/ack-send')
         self.assertEqual(stats[0][0], 1)
 
         users = self.vapi.hanat_mapper_user_dump()
@@ -125,7 +126,8 @@ class TestHANATmapper(VppTestCase):
             self.assertEqual(len(sessions), 1)
             self.assertIn(sessions[0].opaque_data, ['AAAA', ''])
 
-        stats = self.statistics.get_counter('/hanat-mapper/add-event-recv')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/add-event-recv')
         self.assertEqual(stats[0][0], 2)
 
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
@@ -151,7 +153,8 @@ class TestHANATmapper(VppTestCase):
                                                             users[0].tenant_id)
         self.assertEqual(len(sessions), 1)
 
-        stats = self.statistics.get_counter('/hanat-mapper/del-event-recv')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/del-event-recv')
         self.assertEqual(stats[0][0], 1)
 
         stats = self.statistics.get_counter(
@@ -241,9 +244,11 @@ class TestHANATmapper(VppTestCase):
         self.pg0.add_stream(ack)
         self.pg_start()
 
-        stats = self.statistics.get_counter('/hanat-mapper/add-event-send')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/add-event-send')
         self.assertEqual(stats[0][0], 2)
-        stats = self.statistics.get_counter('/hanat-mapper/ack-recv')
+        stats = self.statistics.get_counter(
+             '/hanat/mapper/state-sync/ack-recv')
         self.assertEqual(stats[0][0], 1)
 
         self.pg_enable_capture(self.pg_interfaces)
@@ -260,9 +265,11 @@ class TestHANATmapper(VppTestCase):
 
         self.pg_enable_capture(self.pg_interfaces)
         sleep(12)
-        stats = self.statistics.get_counter('/hanat-mapper/retry-count')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/retry-count')
         self.assertEqual(stats[0][0], 3)
-        stats = self.statistics.get_counter('/hanat-mapper/missed-count')
+        stats = self.statistics.get_counter(
+            '/hanat/mapper/state-sync/missed-count')
         self.assertEqual(stats[0][0], 1)
         capture = self.pg0.get_capture(3)
         for packet in capture:

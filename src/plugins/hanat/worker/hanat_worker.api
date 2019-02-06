@@ -60,16 +60,17 @@ define hanat_worker_mapper_add_del {
   u32 client_index;
   u32 context;
   bool is_add;
-  u32 pool_id;
+  u32 pool_id;			/* Pool ID used by the caller and returned in a session request */
+  u32 fib_index;		/* Outside fib index */
   vl_api_ip4_prefix_t pool;
-  vl_api_address_t src;
-  vl_api_address_t mapper;
-  u16 udp_port;
+  vl_api_address_t src;		/* Worker SA for communicating with mapper */
+  vl_api_address_t mapper;	/* IP address of mapper for this pool (IPv4 only) */
+  u16 udp_port;			/* UDP port mapper is listening on */
 };
 define hanat_worker_mapper_add_del_reply {
   u32 context;
   i32 retval;
-  u32 mapper_index;
+  u32 mapper_index;		/* Mapper index that must be used in subsequent call to program the mapper buckets */
 };
 
 /*

@@ -29,7 +29,8 @@
  */
 #define foreach_hanat_worker_next		\
   _(DROP, "error-drop")				\
-  _(SLOW_FEATURE, "hanat-worker-slow-feature")
+  _(SLOW_FEATURE, "hanat-worker-slow-feature")	\
+  _(IP4_LOOKUP, "ip4-lookup")
 
 typedef enum {
 #define _(s, n) HANAT_WORKER_NEXT_##s,
@@ -203,22 +204,38 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
  * Send session refresh packet
  */
 static void
-hanat_refresh_session (hanat_session_t *session)
+hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *offset_per_mapper_buffer, u32 **to_node)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   vlib_main_t *vm = vlib_get_main();
   u32 bi;
   hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, session->mapper_id);
+  hanat_ip_udp_hanat_header_t *h;
+  u16 offset;
 
-  hanat_ip_udp_hanat_header_t *h = vlib_packet_template_get_packet (vm, &hm->hanat_protocol_template, &bi);
-  if (!h) return;
+  if (buffer_per_mapper[session->mapper_id] == 0) {
+    h = vlib_packet_template_get_packet (vm, &hm->hanat_protocol_template, &bi);
+    if (!h) return;
+    vec_add1(*to_node, bi);
+    buffer_per_mapper[session->mapper_id] = bi;
+    offset_per_mapper_buffer[session->mapper_id] = offset = sizeof(*h);
+    memcpy(&h->ip.src_address.as_u32, &pe->src.ip4.as_u32, 4);
+    memcpy(&h->ip.dst_address.as_u32, &pe->mapper.ip4.as_u32, 4);
+    h->udp.src_port = htons(hm->udp_port);
+    h->udp.dst_port = htons(pe->udp_port);
+    h->hanat.core_id = 0;
 
-  h->ip.src_address.as_u32 = pe->src.ip4.as_u32;
-  h->ip.dst_address.as_u32 = pe->mapper.ip4.as_u32;
-  h->udp.src_port = htons(hm->udp_port);
-  h->udp.dst_port = htons(pe->udp_port);
+    vlib_buffer_t *b = vlib_get_buffer(vm, bi);
+    VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
+    b->flags |= VLIB_BUFFER_IS_TRACED;
+  } else {
+    clib_warning("Reusing existing buffer %d", buffer_per_mapper[session->mapper_id]);
+    vlib_buffer_t *b = vlib_get_buffer(vm, buffer_per_mapper[session->mapper_id]);
+    h = vlib_buffer_get_current(b);
+    offset = offset_per_mapper_buffer[session->mapper_id];
+  }
 
-  hanat_option_session_refresh_t *ref = (hanat_option_session_refresh_t *) (&h->hanat + 1);
+  hanat_option_session_refresh_t *ref = (hanat_option_session_refresh_t *) ((u8 *)h + offset);
   ref->desc.sa.as_u32 = session->key.sa.as_u32;
   ref->desc.da.as_u32 = session->key.da.as_u32;
   ref->desc.sp = session->key.sp;
@@ -229,14 +246,17 @@ hanat_refresh_session (hanat_session_t *session)
   ref->flags = 0;
   ref->packets = 0;
   ref->bytes = 0;
-  u16 len = sizeof(*h) + sizeof(hanat_option_session_refresh_t);
+
+  offset += sizeof(hanat_option_session_refresh_t);
+  u16 len = offset;
+  clib_warning("OFFSET %d", len);
   h->ip.length = htons(len);
   h->ip.checksum = ip4_header_checksum (&h->ip);
   h->udp.length = htons (len - sizeof(ip4_header_t));
   h->udp.checksum = 0;
 
-  /* Add to frame */
-  give_to_frame(hm->ip4_lookup_node_index, bi);
+  clib_warning("Session refresh packet %U", format_ip4_header, &h->ip);
+  offset_per_mapper_buffer[session->mapper_id] = offset;
 }
 
 static bool
@@ -298,7 +318,7 @@ hanat_worker (vlib_main_t * vm,
   n_left_from = frame->n_vectors;
   u32 next_index = node->cached_next_index;
   u32 cache_hit = 0, cache_miss = 0;
-
+  u32 *buffer_per_mapper = 0, *offset_per_mapper_buffer = 0, *to_node = 0;
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
@@ -336,9 +356,9 @@ hanat_worker (vlib_main_t * vm,
 	      add_gre_encap(b0, ip0, session->entry.gre, out_fib_index0);
 
 	    if (now >= session->entry.last_refreshed + hm->cache_refresh_interval) {
-	      vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_REFRESH_SENT, 1);
-	      clib_warning("TODO: Entry needs refresh.");
-	      hanat_refresh_session(session);
+	      vec_validate_init_empty(buffer_per_mapper, session->mapper_id, 0);
+	      vec_validate_init_empty(offset_per_mapper_buffer, session->mapper_id, 0);
+	      hanat_refresh_session(session, buffer_per_mapper, offset_per_mapper_buffer, &to_node);
 	      session->entry.last_refreshed = now;
 	    }
 
@@ -366,7 +386,11 @@ hanat_worker (vlib_main_t * vm,
     }
   vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
   vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
-
+  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_REFRESH_SENT, vec_len(to_node));
+  hanat_send_to_node(vm, to_node, node, HANAT_WORKER_NEXT_IP4_LOOKUP);
+  vec_free(buffer_per_mapper);
+  vec_free(offset_per_mapper_buffer);
+  vec_free(to_node);
   return frame->n_vectors;
 }
 
