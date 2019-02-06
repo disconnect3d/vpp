@@ -212,6 +212,7 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
   hanat_pool_entry_t *pe = pool_elt_at_index(hm->pool_db.pools, session->mapper_id);
   hanat_ip_udp_hanat_header_t *h;
   u16 offset;
+  vlib_buffer_t *b;
 
   if (buffer_per_mapper[session->mapper_id] == 0) {
     h = vlib_packet_template_get_packet (vm, &hm->hanat_protocol_template, &bi);
@@ -225,17 +226,20 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
     h->udp.dst_port = htons(pe->udp_port);
     h->hanat.core_id = 0;
 
-    vlib_buffer_t *b = vlib_get_buffer(vm, bi);
+    b = vlib_get_buffer(vm, bi);
     VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
     b->flags |= VLIB_BUFFER_IS_TRACED;
+    offset = sizeof(*h);
   } else {
     clib_warning("Reusing existing buffer %d", buffer_per_mapper[session->mapper_id]);
-    vlib_buffer_t *b = vlib_get_buffer(vm, buffer_per_mapper[session->mapper_id]);
+    b = vlib_get_buffer(vm, buffer_per_mapper[session->mapper_id]);
     h = vlib_buffer_get_current(b);
     offset = offset_per_mapper_buffer[session->mapper_id];
   }
 
   hanat_option_session_refresh_t *ref = (hanat_option_session_refresh_t *) ((u8 *)h + offset);
+  ref->type = HANAT_SESSION_REFRESH;
+  ref->length = sizeof(hanat_option_session_refresh_t);
   ref->desc.sa.as_u32 = session->key.sa.as_u32;
   ref->desc.da.as_u32 = session->key.da.as_u32;
   ref->desc.sp = session->key.sp;
@@ -254,6 +258,8 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
   h->ip.checksum = ip4_header_checksum (&h->ip);
   h->udp.length = htons (len - sizeof(ip4_header_t));
   h->udp.checksum = 0;
+
+  b->current_length = offset;
 
   clib_warning("Session refresh packet %U", format_ip4_header, &h->ip);
   offset_per_mapper_buffer[session->mapper_id] = offset;

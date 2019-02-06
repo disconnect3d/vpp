@@ -43,6 +43,7 @@ class HANATSessionBinding(_HANATGuessPayload, Packet):
                     IPField("dst", '0.0.0.0'),
                     ShortField("sport", 0),
                     ShortField("dport", 0),
+                    ByteField("in2out", 0),
                     ConditionalField(
                         IPField("gre", '0.0.0.0'),
                         lambda pkt: pkt.len == 30),
@@ -58,7 +59,12 @@ class HANATSessionRefresh(_HANATGuessPayload, Packet):
                     ByteEnumField("proto", 0, IP_PROTOS),
                     ThreeBytesField("VNI", 0),
                     ShortField("sport", 0),
-                    ShortField("dport", 0)]
+                    ShortField("dport", 0),
+                    ByteField("in2out", 0),
+                    IntField("flags", 0),
+                    LongField("packets", 0),
+                    LongField("bytes", 0),
+    ]
 
 
 class HANAT(_HANATGuessPayload, Packet):
