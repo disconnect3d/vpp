@@ -107,7 +107,7 @@ typedef struct {
 typedef enum {
   HANAT_FLAGS_UPDATE     = 0x0,	      
   HANAT_FLAGS_COMPLETING = 0x1,
-} hanat_flags_t;  
+} hanat_flags_t;
 
 typedef struct {
   u8 type;		/* Session keepalive */
