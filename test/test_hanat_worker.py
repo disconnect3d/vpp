@@ -157,8 +157,8 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
                                                         pool_id=200,
                                                         pool='130.67.1.0/24',
-                                                        src=self.pg2.remote_ip4,
-                                                        mapper=self.pg2.local_ip4,
+                                                        src=self.pg2.local_ip4,
+                                                        mapper=self.pg2.remote_ip4,
                                                         udp_port=1234)
 
         print('RV', rv)

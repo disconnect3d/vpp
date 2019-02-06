@@ -186,9 +186,9 @@ hanat_state_sync_init (vlib_main_t * vm)
   sm->src_ip_address.as_u32 = 0;
   sm->src_port = 0;
 
-#define _(N, s, v) sm->counters[v].name = s;              \
-  sm->counters[v].stat_segment_name = "/hanat-mapper/" s; \
-  vlib_validate_simple_counter(&sm->counters[v], 0);      \
+#define _(N, s, v) sm->counters[v].name = s;                         \
+  sm->counters[v].stat_segment_name = "/hanat/mapper/state-sync/" s; \
+  vlib_validate_simple_counter(&sm->counters[v], 0);                 \
   vlib_zero_simple_counter(&sm->counters[v], 0);
   foreach_hanat_state_sync_counter
 #undef _
