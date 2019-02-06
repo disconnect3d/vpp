@@ -182,7 +182,7 @@ int l3_checksum_delta(hanat_instructions_t instructions,
 int l4_checksum_delta (hanat_instructions_t instructions, ip_csum_t c,
 		       u16 pre_sp, u16 post_sp, u16 pre_dp, u16 post_dp);
 
-int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, ip4_address_t *prefix, u8 prefix_len,
+int hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address_t *prefix, u8 prefix_len,
 				ip46_address_t *src, ip46_address_t *mapper, u16 udp_port, u32 *mapper_index);
 int hanat_worker_mapper_buckets(u32 n, u32 mapper_index[]);
 int hanat_worker_enable(u16 udp_port, ip4_address_t *gre_src, u32 cache_expiry_timer, u32 cache_refresh_interval);
