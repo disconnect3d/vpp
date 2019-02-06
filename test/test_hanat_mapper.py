@@ -84,6 +84,11 @@ class TestHANATmapper(VppTestCase):
             port=self.local_sync_port,
             path_mtu=512)
 
+        listener = self.vapi.papi.hanat_mapper_get_state_sync_listener()
+        self.assertEqual(str(listener.ip_address), self.pg0.local_ip4)
+        self.assertEqual(listener.port, self.local_sync_port)
+        self.assertEqual(listener.path_mtu, 512)
+
         users = self.vapi.hanat_mapper_user_dump()
         users_before = len(users)
 
@@ -176,6 +181,18 @@ class TestHANATmapper(VppTestCase):
 
         self.vapi.papi.hanat_mapper_set_pool_failover(
             pool_id=2, failover_index=rv.failover_index)
+
+        failover = self.vapi.papi.hanat_mapper_state_sync_failover_dump()
+        self.assertEqual(len(failover), 1)
+        self.assertEqual(str(failover[0].ip_address), self.pg0.remote_ip4)
+        self.assertEqual(failover[0].port, self.remote_sync_port)
+        self.assertEqual(failover[0].failover_index, rv.failover_index)
+
+        pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        self.assertEqual(len(pool), 1)
+        self.assertEqual(str(pool[0].prefix), '2.3.4.0/28')
+        self.assertEqual(pool[0].pool_id, 2)
+        self.assertEqual(pool[0].failover_index, rv.failover_index)
 
         self.pg_enable_capture(self.pg_interfaces)
         cli_str = "hanat-mapper add session "

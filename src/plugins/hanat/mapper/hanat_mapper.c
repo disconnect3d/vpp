@@ -252,6 +252,8 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
       hash_set (nm->pool_index_by_pool_id, pool_id, pool - nm->ext_addr_pool);
       start_addr.as_u32 = prefix->as_u32;
       ip4_address_normalize (&start_addr, prefix_len);
+      pool->prefix.as_u32 = start_addr.as_u32;
+      pool->prefix_len = prefix_len;
       ip4_prefix_max_address_host_order (&start_addr, prefix_len, &end_addr);
       count =
 	(end_addr.as_u32 - clib_net_to_host_u32 (start_addr.as_u32)) + 1;

@@ -114,7 +114,6 @@ define hanat_mapper_user_dump {
   u32 client_index;
   u32 context;
 };
-
 define hanat_mapper_user_details {
   u32 context;
   u32 tenant_id;
@@ -128,7 +127,6 @@ define hanat_mapper_user_session_dump {
   vl_api_ip4_address_t address;
   u32 tenant_id;
 };
-
 define hanat_mapper_user_session_details {
   u32 context;
   vl_api_ip4_address_t in_l_addr;
@@ -146,6 +144,70 @@ define hanat_mapper_user_session_details {
   u64 total_pkts;
   u8 opaque_len;
   u8 opaque_data[opaque_len];
+};
+
+define hanat_mapper_get_timeouts {
+  u32 client_index;
+  u32 context;
+};
+define hanat_mapper_get_timeouts_reply {
+  u32 context;
+  i32 retval;
+  u32 udp;
+  u32 tcp_established;
+  u32 tcp_transitory;
+  u32 icmp;
+};
+
+define hanat_mapper_static_mapping_dump {
+  u32 client_index;
+  u32 context;
+};
+define hanat_mapper_static_mapping_details {
+  u32 context;
+  vl_api_ip4_address_t local_ip_address;
+  vl_api_ip4_address_t external_ip_address;
+  u16 local_port;
+  u16 external_port;
+  u8 protocol;
+  u32 tenant_id;
+  u32 pool_id;
+  u32 nsessions;
+};
+
+define hanat_mapper_get_state_sync_listener {
+  u32 client_index;
+  u32 context;
+};
+define hanat_mapper_get_state_sync_listener_reply {
+  u32 context;
+  i32 retval;
+  vl_api_ip4_address_t ip_address;
+  u16 port;
+  u32 path_mtu;
+};
+
+define hanat_mapper_state_sync_failover_dump {
+  u32 client_index;
+  u32 context;
+};
+define hanat_mapper_state_sync_failover_details {
+  u32 context;
+  vl_api_ip4_address_t ip_address;
+  u16 port;
+  u32 failover_index;
+};
+
+define hanat_mapper_ext_addr_pool_dump {
+  u32 client_index;
+  u32 context;
+};
+
+define hanat_mapper_ext_addr_pool_details {
+  u32 context;
+  vl_api_ip4_prefix_t prefix;
+  u32 pool_id;
+  u32 failover_index;
 };
 
 /*
