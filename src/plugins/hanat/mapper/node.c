@@ -116,7 +116,7 @@ hanat_session_refresh_process (vlib_main_t * vm,
 
   ip4_address_t in_l_addr, out_r_addr;
   u32 tenant_id;
-  u8 event_type;
+  //u8 event_type; /* OLE: FIXING BUILD ERROR */
   u8 protocol;
   u8 is_in2out;
   f64 now;
@@ -164,8 +164,8 @@ hanat_session_refresh_process (vlib_main_t * vm,
 	      hanat_state_sync_event_add (&event, 0, 0, failover_index,
 				          vm->thread_index);
             }
-      else
-        {
+	  else
+	    {
           hanat_mapper_session_free (&nm->db, session);
 
           if (failover_index != ~0)
@@ -181,7 +181,8 @@ hanat_session_refresh_process (vlib_main_t * vm,
 	      hanat_state_sync_event_add (&event, 0, 0, failover_index,
 				          vm->thread_index);
 	    }
-        }
+	    } /* OLE: FIXING BUILD ERROR */
+	}
     }
 }
 

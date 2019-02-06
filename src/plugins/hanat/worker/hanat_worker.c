@@ -158,9 +158,7 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   hanat_pool_entry_t *poolentry;
-  // REVIEW: the lookup in the hash was based on fib_index not pool_id, why pool_id ?
-  // changed fib_index to 0 in every call for now
-  u32 mi = hanat_lpm_64_lookup (&hm->pool_db, 0, ntohl(prefix->as_u32));
+  u32 mi = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(prefix->as_u32));
   if (is_add) {
     if (mi != ~0) {
       clib_warning("Exists already");
@@ -177,9 +175,9 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address
     poolentry->udp_port = udp_port;
 
     /* Add prefix to LPM for outside to in traffix */
-    hanat_lpm_64_add(&hm->pool_db, 0, ntohl(prefix->as_u32), prefix_len, *mapper_index);
+    hanat_lpm_64_add(&hm->pool_db, fib_index, ntohl(prefix->as_u32), prefix_len, *mapper_index);
   } else {
-    hanat_lpm_64_delete(&hm->pool_db, 0, ntohl(prefix->as_u32), prefix_len);
+    hanat_lpm_64_delete(&hm->pool_db, fib_index, ntohl(prefix->as_u32), prefix_len);
     pool_put_index(hm->pool_db.pools, mi);
   }
   return 0;
