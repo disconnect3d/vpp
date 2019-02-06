@@ -209,6 +209,17 @@ hanat_state_sync_set_listener (ip4_address_t * addr, u16 port, u32 path_mtu)
   return 0;
 }
 
+void
+hanat_state_sync_get_listener (ip4_address_t * addr, u16 * port,
+			       u32 * path_mtu)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+
+  addr->as_u32 = sm->src_ip_address.as_u32;
+  *port = sm->src_port;
+  *path_mtu = sm->state_sync_path_mtu;
+}
+
 int
 hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
 				   u32 * index, u8 is_add)
@@ -253,6 +264,22 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
     }
 
   return 0;
+}
+
+void
+hanat_state_sync_failover_walk (hanat_state_sync_failover_walk_fn_t fn,
+				void *ctx)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  hanat_state_sync_failover_t *f;
+
+  /* *INDENT-OFF* */
+  pool_foreach (f, sm->failovers,
+  ({
+    if (fn (&f->ip_address, f->port, f - sm->failovers, ctx))
+      return;
+  }));
+  /* *INDENT-ON* */
 }
 
 static void

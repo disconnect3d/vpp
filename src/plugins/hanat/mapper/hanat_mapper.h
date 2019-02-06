@@ -44,7 +44,6 @@ typedef enum
 typedef struct
 {
   ip4_address_t addr;
-  u32 tenant_id;
 #define _(N, i, n, s) \
   u16 busy_##n##_ports; \
   uword * busy_##n##_port_bitmap;
@@ -55,6 +54,8 @@ typedef struct
 typedef struct
 {
   u32 pool_id;
+  ip4_address_t prefix;
+  u8 prefix_len;
   hanat_mapper_address_t *addresses;
   u32 failover_index;
 } hanat_mapper_addr_pool_t;

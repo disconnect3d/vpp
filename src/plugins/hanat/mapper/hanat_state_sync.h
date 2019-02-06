@@ -63,8 +63,17 @@ void hanat_state_sync_init (vlib_main_t * vm);
 int hanat_state_sync_set_listener (ip4_address_t * addr, u16 port,
 				   u32 path_mtu);
 
+void hanat_state_sync_get_listener (ip4_address_t * addr, u16 * port,
+				    u32 * path_mtu);
+
 int hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
 				       u32 * index, u8 is_add);
+
+typedef int (*hanat_state_sync_failover_walk_fn_t) (ip4_address_t * addr,
+						    u16 port, u32 index,
+						    void *ctx);
+void hanat_state_sync_failover_walk (hanat_state_sync_failover_walk_fn_t fn,
+				     void *ctx);
 
 void hanat_state_sync_event_process (hanat_state_sync_event_t * event,
 				     f64 now, u32 thread_index);
