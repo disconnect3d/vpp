@@ -246,17 +246,15 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
   ref->desc.dp = session->key.dp;
   ref->desc.proto = session->key.proto;
   ref->desc.vni = htonl(session->entry.fib_index) >> 8;
-
+  ref->desc.in2out = 0; // TODO: Move?
   ref->flags = 0;
   ref->packets = 0;
   ref->bytes = 0;
 
   offset += sizeof(hanat_option_session_refresh_t);
-  u16 len = offset;
-  clib_warning("OFFSET %d", len);
-  h->ip.length = htons(len);
+  h->ip.length = htons(offset);
   h->ip.checksum = ip4_header_checksum (&h->ip);
-  h->udp.length = htons (len - sizeof(ip4_header_t));
+  h->udp.length = htons (offset - sizeof(ip4_header_t));
   h->udp.checksum = 0;
 
   b->current_length = offset;
@@ -433,7 +431,6 @@ hanat_gre4_input (vlib_main_t * vm,
 	  u32 next0, error0 = 0;
 
 	  bi0 = from[0];
-	  clib_warning("GRE input processing %d", bi0);
 	  to_next[0] = bi0;
 	  from += 1;
 	  to_next += 1;

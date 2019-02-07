@@ -386,6 +386,15 @@ class TestHANAT(VppTestCase):
         self.assertEqual(rv.retval, 0)
 
 
+    def send_and_expect_with_reply(self, input, pkts, output, output_pkts):
+        #self.vapi.cli("clear trace")
+        input.add_stream(pkts)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+        rx = output.get_capture(output_pkts)
+        return rx
+
+
     def test_hanat_cache(self):
         """ hanat_worker cache tests """
 
@@ -440,7 +449,8 @@ class TestHANAT(VppTestCase):
                 rx_interface = self.pg0
                 p = p_ether_pg1 / ip / l4
 
-            rx = self.send_and_expect(tx_interface, p*2, self.pg2) # Or rx_interface
+            # Batching of HANAT protocol
+            rx = self.send_and_expect_with_reply(tx_interface, p*2, self.pg2, 1) # Or rx_interface
             print("RECEIVED: {}".format(len(rx)))
             for x in rx:
                   x.show2()

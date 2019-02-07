@@ -43,7 +43,6 @@ class HANATSessionBinding(_HANATGuessPayload, Packet):
                     IPField("dst", '0.0.0.0'),
                     ShortField("sport", 0),
                     ShortField("dport", 0),
-                    ByteField("in2out", 0),
                     ConditionalField(
                         IPField("gre", '0.0.0.0'),
                         lambda pkt: pkt.len == 30),

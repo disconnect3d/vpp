@@ -167,47 +167,41 @@ hanat_get_session_index(hanat_session_t *s)
   return s - hm->db.sessions;
 }
 
-static int
-send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
-			    hanat_pool_entry_t *pe, hanat_session_t *session, u32 mode,
-			    ip4_address_t gre)
+static void
+hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session, u32 mode,
+		       ip4_address_t gre, u32 *buffer_per_mapper, u32 *offset_per_mapper_buffer, u32 **to_node)
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
-  u16 len;
-
-  /* Allocate buffer */
+  vlib_main_t *vm = vlib_get_main();
   u32 bi;
+  hanat_ip_udp_hanat_header_t *h;
+  u16 offset;
   vlib_buffer_t *b;
-  if (vlib_buffer_alloc (vm, &bi, 1) != 1)
-    return -1;
 
-  b = vlib_get_buffer (vm, bi);
-  VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
-  b->flags |= org_b->flags & VLIB_BUFFER_IS_TRACED;
-  b->flags |= VNET_BUFFER_F_LOCALLY_ORIGINATED;
-  vnet_buffer (b)->sw_if_index[VLIB_RX] = 0;
-  vnet_buffer (b)->sw_if_index[VLIB_TX] = ~0; //fib_index;
+  if (buffer_per_mapper[session->mapper_id] == 0) {
+    h = vlib_packet_template_get_packet (vm, &hm->hanat_protocol_template, &bi);
+    if (!h) return;
+    vec_add1(*to_node, bi);
+    buffer_per_mapper[session->mapper_id] = bi;
+    offset_per_mapper_buffer[session->mapper_id] = offset = sizeof(*h);
+    memcpy(&h->ip.src_address.as_u32, &pe->src.ip4.as_u32, 4);
+    memcpy(&h->ip.dst_address.as_u32, &pe->mapper.ip4.as_u32, 4);
+    h->udp.src_port = htons(hm->udp_port);
+    h->udp.dst_port = htons(pe->udp_port);
+    h->hanat.core_id = 0;
 
-  ip4_header_t *ip = vlib_buffer_get_current (b);
-  ip->ip_version_and_header_length = 0x45;
-  ip->flags_and_fragment_offset =
-    clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
-  ip->ttl = 64;
-  ip->protocol = IP_PROTOCOL_UDP;
-  ip->src_address.as_u32 = pe->src.ip4.as_u32;
-  ip->dst_address.as_u32 = pe->mapper.ip4.as_u32;
-  len = sizeof(ip4_header_t);
+    b = vlib_get_buffer(vm, bi);
+    VLIB_BUFFER_TRACE_TRAJECTORY_INIT (b);
+    b->flags |= VLIB_BUFFER_IS_TRACED;
+    offset = sizeof(*h);
+  } else {
+    clib_warning("Reusing existing buffer %d", buffer_per_mapper[session->mapper_id]);
+    b = vlib_get_buffer(vm, buffer_per_mapper[session->mapper_id]);
+    h = vlib_buffer_get_current(b);
+    offset = offset_per_mapper_buffer[session->mapper_id];
+  }
 
-  udp_header_t *udp = (udp_header_t *) (ip + 1);
-  udp->src_port = htons(hm->udp_port);
-  udp->dst_port = htons(pe->udp_port);
-  len += sizeof (udp_header_t);
-
-  hanat_header_t *hanat = (hanat_header_t *) (udp + 1);
-  hanat->core_id = vlib_get_thread_index();
-  len += sizeof (hanat_header_t);
-
-  hanat_option_session_request_t *req = (hanat_option_session_request_t *) (hanat + 1);
+  hanat_option_session_request_t *req = (hanat_option_session_request_t *) ((u8 *)h + offset);
   int session_request_len = (gre.as_u32 > 0) ? sizeof(hanat_option_session_request_t) + 4 : sizeof(hanat_option_session_request_t);
   req->type = HANAT_SESSION_REQUEST;
   req->length = session_request_len;
@@ -223,20 +217,19 @@ send_hanat_protocol_request(vlib_main_t *vm, u32 vni, vlib_buffer_t *org_b,
   req->desc.in2out = mode == (HANAT_WORKER_IF_INSIDE || HANAT_WORKER_IF_DUAL) ? true : false;
   if (gre.as_u32)
     memcpy(req->opaque_data, &gre.as_u32, 4);
-  len += session_request_len;
+  offset += session_request_len;
 
-  ip->length = htons(len);
-  ip->checksum = ip4_header_checksum (ip);
-  udp->length = htons (len - sizeof(ip4_header_t));
-  udp->checksum = 0;
+  h->ip.length = htons(offset);
+  h->ip.checksum = ip4_header_checksum (&h->ip);
+  h->udp.length = htons (offset - sizeof(ip4_header_t));
+  h->udp.checksum = 0;
 
-  b->current_length = len;
+  b->current_length = offset;
 
-  /* Add to frame */
-  give_to_frame(hm->ip4_lookup_node_index, bi);
-      
-  return 0;
+  clib_warning("Session request packet %U", format_ip4_header, &h->ip);
+  offset_per_mapper_buffer[session->mapper_id] = offset;
 }
+
 
 static void
 hanat_worker_cache_update(hanat_session_t *s, f64 now, hanat_instructions_t instructions,
@@ -314,6 +307,7 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 {
   hanat_worker_main_t *hm = &hanat_worker_main;
   u32 n_left_from, *from, *to_next;
+  u32 *buffer_per_mapper = 0, *offset_per_mapper_buffer = 0, *to_node = 0;
 
   from = vlib_frame_vector_args (frame);
   n_left_from = frame->n_vectors;
@@ -369,7 +363,10 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	  s->mapper_id = mid0;
 	  if (rv)
 	    vlib_node_increment_counter (vm, node->node_index, rv, 1);
-	  send_hanat_protocol_request(vm, vni0, b0, pe, s, mode0, gre0);
+
+	  vec_validate_init_empty(buffer_per_mapper, mid0, 0);
+	  vec_validate_init_empty(offset_per_mapper_buffer, mid0, 0);
+	  hanat_protocol_request(vni0, pe, s, mode0, gre0, buffer_per_mapper, offset_per_mapper_buffer, &to_node);
 	  if (tunnel) { /* Reset buffer to be able to play it back to hanat_gre4_input */
 	    int header_len = sizeof(ip4_header_t) + sizeof(gre_header_t) + sizeof(u32);
 	    vlib_buffer_advance(b0, -header_len);
@@ -400,6 +397,11 @@ hanat_worker_slow_inline (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
+  hanat_send_to_node(vm, to_node, node, HANAT_WORKER_SLOW_NEXT_IP4_LOOKUP);
+  vec_free(buffer_per_mapper);
+  vec_free(offset_per_mapper_buffer);
+  vec_free(to_node);
+
   return frame->n_vectors;
 }
 
@@ -500,7 +502,6 @@ hanat_protocol_input (vlib_main_t * vm,
 	      ip4_address_t gre = {0};
 	      if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
 		memcpy(&gre, sp->opaque_data, 4);
-		
 	      hanat_worker_cache_update(s, now, ntohl(sp->instructions), ntohl(sp->fib_index),
 					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
 
