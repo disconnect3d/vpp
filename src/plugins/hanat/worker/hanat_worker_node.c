@@ -244,7 +244,7 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
   ref->desc.sp = session->key.sp;
   ref->desc.dp = session->key.dp;
   ref->desc.proto = session->key.proto;
-  ref->desc.vni = htonl(session->entry.fib_index) >> 8;
+  ref->desc.vni = htonl(session->entry.fib_index);
   ref->desc.in2out = 0; // TODO: Move?
   ref->flags = 0;
   ref->packets = 0;

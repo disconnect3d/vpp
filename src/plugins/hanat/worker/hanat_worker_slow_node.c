@@ -214,7 +214,7 @@ hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session
   req->desc.sp = session->key.sp;
   req->desc.dp = session->key.dp;
   req->desc.proto = session->key.proto;
-  req->desc.vni = htonl(vni) >> 8;
+  req->desc.vni = htonl(vni);
   req->desc.in2out = mode == (HANAT_WORKER_IF_INSIDE || HANAT_WORKER_IF_DUAL) ? true : false;
   if (gre.as_u32)
     memcpy(req->opaque_data, &gre.as_u32, 4);

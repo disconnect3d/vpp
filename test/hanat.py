@@ -16,19 +16,19 @@ class _HANATGuessPayload:
 class HANATSessionRequest(_HANATGuessPayload, Packet):
     name = "HANAT Session Request"
     fields_desc = [ ByteField("type", 0),
-                    ByteField("len", 27),
+                    ByteField("len", 28),
                     IntField("session_id", 0),
                     IntField("poolid", 0),
                     IPField("src", '0.0.0.0'),
                     IPField("dst", '0.0.0.0'),
                     ByteEnumField("proto", 0, IP_PROTOS),
-                    ThreeBytesField("VNI", 0),
+                    IntField("VNI", 0),
                     ShortField("sport", 0),
                     ShortField("dport", 0),
                     ByteField("in2out", 0),
                     ConditionalField(
                         IPField("gre", '0.0.0.0'),
-                        lambda pkt: pkt.len == 31),
+                        lambda pkt: pkt.len == 32),
                     ]
 
 class HANATSessionBinding(_HANATGuessPayload, Packet):
@@ -57,7 +57,7 @@ class HANATSessionRefresh(_HANATGuessPayload, Packet):
                     IPField("src", '0.0.0.0'),
                     IPField("dst", '0.0.0.0'),
                     ByteEnumField("proto", 0, IP_PROTOS),
-                    ThreeBytesField("VNI", 0),
+                    IntField("VNI", 0),
                     ShortField("sport", 0),
                     ShortField("dport", 0),
                     ByteField("in2out", 0),
@@ -70,7 +70,7 @@ class HANATSessionRefresh(_HANATGuessPayload, Packet):
 class HANATSessionDecline(_HANATGuessPayload, Packet):
     name = "HANAT Session Decline"
     fields_desc = [ ByteField("type", 2),
-                    ByteField("len", 20),
+                    ByteField("len", 7),
                     IntField("session_id", 0),
                     ByteField("code", 0),
     ]

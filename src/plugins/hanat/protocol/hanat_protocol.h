@@ -62,7 +62,8 @@ typedef struct {
 typedef struct {
   ip4_address_t sa;
   ip4_address_t da;
-  u32 proto:8, vni:23;
+  u8 proto;
+  u32 vni;
   u16 sp;
   u16 dp;
   bool in2out;
