@@ -163,6 +163,10 @@ class TestHANAT(VppTestCase):
         buckets = [rv.mapper_index] * 1024
         rv = self.vapi.papi.hanat_worker_mapper_buckets(mapper_index=buckets)
         self.assertEqual(rv.retval, 0)
+        
+        #rv = self.vapi.papi.hanat_worker_mapper_get_buckets()
+        #self.assertEqual(rv.retval, 0)
+        #print('BUCKETS', rv.mapper_index)
 
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE
         rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg1.sw_if_index,
@@ -170,6 +174,10 @@ class TestHANAT(VppTestCase):
                                                            mode=mode)
         self.assertEqual(rv.retval, 0)
 
+        rv = self.vapi.papi.hanat_worker_interfaces()
+        self.assertEqual(rv.retval, 0)
+
+        print('INTERFACES {}'.format(rv.ifs))
 
     def test_hanat_gre(self):
         """ hanat_worker GRE test """
@@ -494,6 +502,11 @@ class TestHANAT(VppTestCase):
         self.assertEqual(rv.retval, 0)
         rv = self.vapi.papi.hanat_worker_cache_dump()
         self.assertEqual(0, len(rv))
+
+        rv = self.vapi.papi.hanat_worker_mapper_dump()
+        pp = pprint.PrettyPrinter()
+        pp.pprint(rv)
+
 
         mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
         rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,

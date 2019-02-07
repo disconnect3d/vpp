@@ -42,6 +42,10 @@ autoreply define hanat_worker_interface_add_del {
 /*
  * List NAT enabled interfaces
  */
+typedef hanat_worker_interface_type {
+  u32 sw_if_index;
+  vl_api_hanat_worker_if_mode_t mode;
+};
 define hanat_worker_interfaces {
   u32 client_index;
   u32 context;
@@ -50,7 +54,7 @@ define hanat_worker_interfaces_reply {
   u32 context;
   i32 retval;
   u32 n_interfaces;
-  u32 sw_if_index[n_interfaces];
+  vl_api_hanat_worker_interface_type_t ifs[n_interfaces];
 };
 
 /*
@@ -73,6 +77,23 @@ define hanat_worker_mapper_add_del_reply {
   u32 mapper_index;		/* Mapper index that must be used in subsequent call to program the mapper buckets */
 };
 
+/* List mappers */
+define hanat_worker_mapper_dump {
+  u32 client_index;
+  u32 context;
+};
+
+define hanat_worker_mapper_details {
+  u32 client_index;
+  u32 context;
+  u32 pool_id;			/* Pool ID used by the caller and returned in a session request */
+  u32 fib_index;		/* Outside fib index */
+  vl_api_ip4_prefix_t pool;
+  vl_api_address_t src;		/* Worker SA for communicating with mapper */
+  vl_api_address_t mapper;	/* IP address of mapper for this pool (IPv4 only) */
+  u16 udp_port;			/* UDP port mapper is listening on */
+};
+
 /*
  * Load balancing bucket to mapper mapping
  * Adds or replaces the lb stable hash
@@ -80,6 +101,16 @@ define hanat_worker_mapper_add_del_reply {
 autoreply define hanat_worker_mapper_buckets {
   u32 client_index;
   u32 context;
+  u32 mapper_index[1024];
+};
+
+define hanat_worker_mapper_get_buckets {
+  u32 client_index;
+  u32 context;
+};
+define hanat_worker_mapper_get_buckets_reply {
+  u32 context;
+  i32 retval;
   u32 mapper_index[1024];
 };
 
@@ -125,6 +156,7 @@ define hanat_worker_cache_dump {
 define hanat_worker_cache_details {
   u32 client_index;
   u32 context;
+  u32 mapper_id;
   vl_api_hanat_session_key_t key;
   u32 instructions;
   u32 post_fib_index;
@@ -133,6 +165,11 @@ define hanat_worker_cache_details {
   u16 post_sp;
   u16 post_dp;
   vl_api_ip4_address_t gre;
+  u16 tcp_mss;
+  u32 cached_buffer;
+  u32 flags;
+  f64 last_heard;
+  f64 last_refreshed;
 };
 
 autoreply define hanat_worker_cache_clear {

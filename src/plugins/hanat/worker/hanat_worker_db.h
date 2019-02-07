@@ -81,7 +81,6 @@ typedef struct {
   ip_csum_t checksum;
   ip_csum_t l4_checksum;
   u16 tcp_mss;
-  //  vlib_combined_counter_t counter;
   u32 buffer;
   f64 last_heard;
   f64 last_refreshed;
@@ -90,7 +89,7 @@ typedef struct {
 } hanat_session_entry_t;
 
 typedef struct {
-  hanat_session_key_t key; // USED?
+  hanat_session_key_t key;
   hanat_session_entry_t entry;
   u32 mapper_id;
 } hanat_session_t;

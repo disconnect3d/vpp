@@ -92,10 +92,13 @@ vl_api_hanat_worker_interfaces_t_handler (vl_api_hanat_worker_interfaces_t *
   REPLY_MACRO3(VL_API_HANAT_WORKER_INTERFACES_REPLY, len,
   ({
     pool_foreach (interface, hm->interfaces, ({
-	  rmp->sw_if_index[i++] = htonl(interface->sw_if_index);
+	  rmp->ifs[i].sw_if_index = htonl(interface->sw_if_index);
+	  rmp->ifs[i].mode = htonl(interface->mode);
+	  i++;
     }));
     rmp->n_interfaces = htonl(i);
   }));
+  /* *INDENT-ON* */
 }
 
 static void
@@ -121,6 +124,44 @@ vl_api_hanat_worker_mapper_add_del_t_handler(vl_api_hanat_worker_mapper_add_del_
     rmp->mapper_index = htonl(mapper_index);
   }));
   /* *INDENT ON* */
+}
+
+static void
+send_hanat_worker_mapper_details (vl_api_registration_t * reg, u32 context, hanat_pool_entry_t *p)
+{
+  vl_api_hanat_worker_mapper_details_t *rmp;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+
+  rmp = vl_msg_api_alloc (sizeof (*rmp));
+  clib_memset (rmp, 0, sizeof (*rmp));
+  rmp->_vl_msg_id = ntohs (VL_API_HANAT_WORKER_MAPPER_DETAILS + hm->msg_id_base);
+  rmp->context = context;
+
+  rmp->pool_id = htonl(p->pool_id);
+  rmp->fib_index = htonl(p->fib_index);
+  
+  memcpy(&rmp->pool.prefix, &p->prefix, 4);
+  rmp->pool.len = p->prefix_len;
+  ip_address_encode (&p->src, IP46_TYPE_ANY, &rmp->src);
+  ip_address_encode (&p->mapper, IP46_TYPE_ANY, &rmp->mapper);
+  rmp->udp_port = htons(p->udp_port);    
+
+  vl_api_send_msg (reg, (u8 *) rmp);
+}
+
+static void
+vl_api_hanat_worker_mapper_dump_t_handler(vl_api_hanat_worker_mapper_dump_t *mp)
+{
+  vl_api_registration_t *reg;
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  reg = vl_api_client_index_to_registration (mp->client_index);
+  if (!reg)
+    return;
+  hanat_pool_entry_t *p;
+  pool_foreach (p, hm->pool_db.pools,
+  ({
+    send_hanat_worker_mapper_details(reg, mp->context, p);
+  }));
 }
 
 static void
@@ -175,6 +216,24 @@ vl_api_hanat_worker_mapper_buckets_t_handler(vl_api_hanat_worker_mapper_buckets_
 }
 
 static void
+vl_api_hanat_worker_mapper_get_buckets_t_handler(vl_api_hanat_worker_mapper_get_buckets_t *mp)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  vl_api_hanat_worker_mapper_get_buckets_reply_t *rmp;
+  int rv = 0, i;
+  /* *INDENT-OFF* */
+  REPLY_MACRO2(VL_API_HANAT_WORKER_MAPPER_GET_BUCKETS_REPLY,
+  ({
+    memset(&rmp->mapper_index, 0, sizeof(u32)*1024);
+    for (i = 0; i < vec_len(hm->pool_db.lb_buckets); i++)
+      rmp->mapper_index[i] = htonl(hm->pool_db.lb_buckets[i]);
+  }));
+  /* *INDENT-ON* */
+
+
+}
+
+static void
 send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat_session_t *s)
 {
   vl_api_hanat_worker_cache_details_t *rmp;
@@ -184,6 +243,7 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   clib_memset (rmp, 0, sizeof (*rmp));
   rmp->_vl_msg_id = ntohs (VL_API_HANAT_WORKER_CACHE_DETAILS + hm->msg_id_base);
   rmp->context = context;
+  rmp->mapper_id = htonl(s->mapper_id);
   memcpy(&rmp->key.sa, &s->key.sa.as_u32, 4);
   memcpy(&rmp->key.da, &s->key.da.as_u32, 4);
   rmp->key.proto = s->key.proto;
@@ -192,9 +252,14 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   rmp->post_fib_index = htonl(s->entry.fib_index);
   memcpy(&rmp->post_sa, &s->entry.post_sa, 4);
   memcpy(&rmp->post_da, &s->entry.post_da, 4);
-  rmp->post_sp = htons(s->entry.post_sp);
-  rmp->post_dp = htons(s->entry.post_dp);
+  rmp->post_sp = s->entry.post_sp;
+  rmp->post_dp = s->entry.post_dp;
   memcpy(&rmp->gre, &s->entry.gre, 4);
+  rmp->tcp_mss = htons(s->entry.tcp_mss);
+  rmp->cached_buffer = htonl(s->entry.buffer);
+  rmp->flags = htonl(s->entry.flags);
+  rmp->last_heard = (f64)clib_net_to_host_u64(s->entry.last_heard);
+  rmp->last_refreshed = (f64)clib_net_to_host_u64(s->entry.last_refreshed);
   vl_api_send_msg (reg, (u8 *) rmp);
 }
 
@@ -221,10 +286,12 @@ _(HANAT_WORKER_ENABLE, hanat_worker_enable)				\
 _(HANAT_WORKER_INTERFACE_ADD_DEL, hanat_worker_interface_add_del)	\
 _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\
+_(HANAT_WORKER_MAPPER_DUMP, hanat_worker_mapper_dump)			\
 _(HANAT_WORKER_CACHE_ADD, hanat_worker_cache_add)			\
 _(HANAT_WORKER_CACHE_DUMP, hanat_worker_cache_dump)			\
 _(HANAT_WORKER_CACHE_CLEAR, hanat_worker_cache_clear)			\
-_(HANAT_WORKER_MAPPER_BUCKETS, hanat_worker_mapper_buckets)
+_(HANAT_WORKER_MAPPER_BUCKETS, hanat_worker_mapper_buckets)		\
+_(HANAT_WORKER_MAPPER_GET_BUCKETS, hanat_worker_mapper_get_buckets)
 
 /* Set up the API message handling tables */
 static clib_error_t *
