@@ -179,6 +179,7 @@ hanat_worker_mapper_add_del(bool is_add, u32 pool_id, u32 fib_index, ip4_address
   } else {
     hanat_lpm_64_delete(&hm->pool_db, fib_index, ntohl(prefix->as_u32), prefix_len);
     pool_put_index(hm->pool_db.pools, mi);
+    *mapper_index = mi;
   }
   return 0;
 }
