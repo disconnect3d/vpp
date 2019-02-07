@@ -89,6 +89,7 @@ static char *hanat_worker_slow_counter_strings[] = {
   _(MAPPER_BINDING, "mapper binding")		\
   _(NO_MAPPER, "no mapper found")		\
   _(HELD_PACKET, "forwarded held packet")	\
+  _(DECLINE_PACKET, "dropped held packet")	\
   _(NOT_IMPLEMENTED_YET, "not implemented yet")
 
 typedef enum
@@ -491,6 +492,12 @@ hanat_protocol_input (vlib_main_t * vm,
 	    tl_t *tl = (tl_t *)(p);
 	    offset += tl->l;
 	    switch(tl->t) {
+
+	      /*
+	       * Lookup based on session-id
+	       * Add data to pool
+	       * Ship cached packet
+	       */
 	    case HANAT_SESSION_BINDING:
 	      {
 		if (tl->l != sizeof(hanat_option_session_binding_t) &&
@@ -499,12 +506,6 @@ hanat_protocol_input (vlib_main_t * vm,
 		  continue;
 		}
 		hanat_option_session_binding_t *sp = (hanat_option_session_binding_t *)(p);
-
-		/*
-		 * Lookup based on session-id
-		 * Add data to pool
-		 * Ship cached packet
-		 */
 		hanat_session_t *s = pool_elt_at_index(hm->db.sessions, ntohl(sp->session_id));
 		if (!s) {
 		  clib_warning("Could not find session %d", ntohl(sp->session_id));
@@ -528,7 +529,28 @@ hanat_protocol_input (vlib_main_t * vm,
 	      }
 	      break;
 	    case HANAT_SESSION_DECLINE:
-	      clib_warning("Unimplemented TLV decline");
+	      {
+		if (tl->l != sizeof(hanat_option_session_decline_t)) {
+		  clib_warning("Invalid Session Decline TLV");
+		  continue;
+		}
+		hanat_option_session_decline_t *sp = (hanat_option_session_decline_t *)(p);
+		hanat_session_t *s = pool_elt_at_index(hm->db.sessions, ntohl(sp->session_id));
+		if (!s) {
+		  clib_warning("Could not find session %d", ntohl(sp->session_id));
+		  continue;
+		}
+
+		u32 bi = s->entry.buffer;
+		hanat_session_delete(&hm->db, &s->key);
+
+		/* Put cached packet back to fast worker node */
+		if (s->entry.buffer) {
+		  /* TODO: Consider sending ICMP error back */
+		  vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_DECLINE_PACKET, 1);
+		  give_to_frame(HANAT_PROTOCOL_INPUT_NEXT_DROP, bi);
+		}
+	      }
 	      break;
 	    default:
 	      clib_warning("Unimplemented TLV");
