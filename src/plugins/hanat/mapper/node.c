@@ -551,8 +551,6 @@ hanat_mapper_node_fn (vlib_main_t * vm,
 	  hanat_header_t *ha0;
 	  //u32 error0;
 
-	  ip_csum_t sum0;
-
 	  bi0 = from[0];
 	  to_next[0] = bi0;
 	  from += 1;
@@ -578,18 +576,15 @@ hanat_mapper_node_fn (vlib_main_t * vm,
 	      dst_addr0 = ip0->dst_address.data_u32;
 	      ip0->src_address.data_u32 = dst_addr0;
 	      ip0->dst_address.data_u32 = src_addr0;
-
-	      sum0 = ip0->checksum;
-	      sum0 = ip_csum_update (sum0, ip0->ttl, host_config_ttl,
-				     ip4_header_t, ttl);
 	      ip0->ttl = host_config_ttl;
-	      ip0->checksum = ip_csum_fold (sum0);
-
+	      ip0->length = htons(ntohs(udp0->length) + sizeof(ip4_header_t));
+	      ip0->checksum = ip4_header_checksum(ip0);
 	      udp0->checksum = 0;
 	      src_port0 = udp0->src_port;
 	      dst_port0 = udp0->dst_port;
 	      udp0->src_port = dst_port0;
 	      udp0->dst_port = src_port0;
+	      b0->current_length = ntohs(ip0->length);
 
 	      ok_packets++;
 	    }
