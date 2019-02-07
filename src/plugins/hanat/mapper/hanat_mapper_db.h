@@ -71,6 +71,9 @@ typedef struct
   clib_bihash_16_8_t session_in2out;
   clib_bihash_16_8_t session_out2in;
   hanat_mapper_session_t *sessions;
+  vlib_simple_counter_main_t total_users;
+  vlib_simple_counter_main_t total_mappings;
+  vlib_simple_counter_main_t total_sessions;
 } hanat_mapper_db_t;
 
 int hanat_mapper_db_init (hanat_mapper_db_t * hanat_mapper_db,
@@ -132,6 +135,13 @@ hanat_mapper_session_t *hanat_mapper_session_create (hanat_mapper_db_t *
 						     user, f64 now,
 						     u8 * opaque_data,
 						     u8 opaque_data_len);
+
+typedef int (*hanat_mapper_session_walk_fn_t) (hanat_mapper_session_t *
+					       session,
+					       hanat_mapper_mapping_t *
+					       mapping, void *ctx);
+void hanat_mapper_session_walk (hanat_mapper_db_t * db,
+				hanat_mapper_session_walk_fn_t fn, void *ctx);
 
 #endif /* __included_hanat_mapper_db_h__ */
 

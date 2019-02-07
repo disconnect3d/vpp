@@ -108,6 +108,22 @@ hanat_mapper_db_init (hanat_mapper_db_t * hanat_mapper_db,
   clib_bihash_set_kvp_format_fn_16_8 (&hanat_mapper_db->session_out2in,
 				      format_session_kvp);
 
+  hanat_mapper_db->total_users.name = "total-users";
+  hanat_mapper_db->total_users.stat_segment_name =
+    "/hanat/mapper/total-users";
+  vlib_validate_simple_counter (&hanat_mapper_db->total_users, 0);
+  vlib_zero_simple_counter (&hanat_mapper_db->total_users, 0);
+  hanat_mapper_db->total_mappings.name = "total-mappings";
+  hanat_mapper_db->total_mappings.stat_segment_name =
+    "/hanat/mapper/total-mappings";
+  vlib_validate_simple_counter (&hanat_mapper_db->total_mappings, 0);
+  vlib_zero_simple_counter (&hanat_mapper_db->total_mappings, 0);
+  hanat_mapper_db->total_sessions.name = "total-sessions";
+  hanat_mapper_db->total_sessions.stat_segment_name =
+    "/hanat/mapper/total-sessions";
+  vlib_validate_simple_counter (&hanat_mapper_db->total_sessions, 0);
+  vlib_zero_simple_counter (&hanat_mapper_db->total_sessions, 0);
+
   return 0;
 }
 
@@ -152,6 +168,8 @@ hanat_mapper_user_create (hanat_mapper_db_t * db, ip4_address_t * addr,
   kv.value = user - db->users;
   clib_bihash_add_del_8_8 (&db->user_hash, &kv, 1);
 
+  vlib_set_simple_counter (&db->total_users, 0, 0, pool_elts (db->users));
+
   return user;
 }
 
@@ -170,6 +188,7 @@ hanat_mapper_user_free (hanat_mapper_db_t * db, hanat_mapper_user_t * user)
   pool_put_index (db->list_pool, user->sessions_per_user_list_head_index);
   pool_put (db->users, user);
 
+  vlib_set_simple_counter (&db->total_users, 0, 0, pool_elts (db->users));
 }
 
 hanat_mapper_mapping_t *
@@ -228,6 +247,9 @@ hanat_mapper_mapping_create (hanat_mapper_db_t * db, ip4_address_t * in_addr,
   mapping_key.tenant_id = 0;
   kv.key = mapping_key.as_u64;
   clib_bihash_add_del_8_8 (&db->mapping_out2in, &kv, 1);
+
+  vlib_set_simple_counter (&db->total_mappings, 0, 0,
+			   pool_elts (db->mappings));
 
   return mapping;
 }
@@ -311,6 +333,9 @@ hanat_mapper_mapping_free (hanat_mapper_db_t * db,
   hanat_mapper_free_out_addr_and_port (mapping->pool_id, mapping->proto,
 				       &mapping->out_addr, mapping->out_port);
   pool_put (db->mappings, mapping);
+
+  vlib_set_simple_counter (&db->total_mappings, 0, 0,
+			   pool_elts (db->mappings));
 }
 
 hanat_mapper_session_t *
@@ -383,6 +408,9 @@ hanat_mapper_session_free (hanat_mapper_db_t * db,
     hanat_mapper_mapping_free (db, mapping, 0);
   if (!user->nsessions)
     hanat_mapper_user_free (db, user);
+
+  vlib_set_simple_counter (&db->total_sessions, 0, 0,
+			   pool_elts (db->sessions));
 }
 
 typedef struct
@@ -606,7 +634,27 @@ hanat_mapper_session_create (hanat_mapper_db_t * db,
   clib_bihash_add_or_overwrite_stale_16_8 (&db->session_out2in, &kv,
 					   is_session_idle_out2in, &ctx);
 
+  vlib_set_simple_counter (&db->total_sessions, 0, 0,
+			   pool_elts (db->sessions));
+
   return session;
+}
+
+void
+hanat_mapper_session_walk (hanat_mapper_db_t * db,
+			   hanat_mapper_session_walk_fn_t fn, void *ctx)
+{
+  hanat_mapper_session_t *session;
+  hanat_mapper_mapping_t *mapping;
+
+  /* *INDENT-OFF* */
+  pool_foreach (session, db->sessions,
+  ({
+    mapping = pool_elt_at_index (db->mappings, session->mapping_index);
+    if (fn (session, mapping, ctx))
+      return;
+  }));
+  /* *INDENT-ON* */
 }
 
 /*
