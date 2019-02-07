@@ -548,7 +548,7 @@ hanat_protocol_input (vlib_main_t * vm,
 		if (s->entry.buffer) {
 		  /* TODO: Consider sending ICMP error back */
 		  vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_DECLINE_PACKET, 1);
-		  give_to_frame(HANAT_PROTOCOL_INPUT_NEXT_DROP, bi);
+		  give_to_frame(hm->error_node_index, bi);
 		}
 	      }
 	      break;

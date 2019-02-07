@@ -3,6 +3,7 @@ from scapy.all import *
 hanattlvs = { 0: "HANATSessionRequest",
               1: "HANATSessionBinding",
               2: "HANATSessionRefresh",
+              3: "HANATSessionDecline"
               }
 
 class _HANATGuessPayload:
@@ -63,6 +64,15 @@ class HANATSessionRefresh(_HANATGuessPayload, Packet):
                     IntField("flags", 0),
                     LongField("packets", 0),
                     LongField("bytes", 0),
+    ]
+
+
+class HANATSessionDecline(_HANATGuessPayload, Packet):
+    name = "HANAT Session Decline"
+    fields_desc = [ ByteField("type", 2),
+                    ByteField("len", 20),
+                    IntField("session_id", 0),
+                    ByteField("code", 0),
     ]
 
 

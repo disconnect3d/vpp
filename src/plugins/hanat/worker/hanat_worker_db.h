@@ -141,6 +141,9 @@ typedef struct {
   hanat_pool_t pool_db;
   u16 udp_port;
 
+  /* error node index */
+  u32 error_node_index;
+
   /* Interface pool */
   hanat_interface_t *interfaces;
   u32 *interface_by_sw_if_index;

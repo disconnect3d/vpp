@@ -36,6 +36,8 @@ hanat_worker_init (vlib_main_t * vm)
   clib_memset (hm, 0, sizeof (*hm));
   hanat_db_init(&hm->db, 1024, 2000000);
 
+  node = vlib_get_node_by_name (vm, (u8 *) "error-drop");
+  hm->error_node_index = node->index;
   node = vlib_get_node_by_name (vm, (u8 *) "ip4-lookup");
   hm->ip4_lookup_node_index = node->index;
   node = vlib_get_node_by_name (vm, (u8 *) "hanat-worker");
