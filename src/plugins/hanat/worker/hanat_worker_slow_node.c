@@ -428,8 +428,8 @@ hanat_worker_slow_tunnel (vlib_main_t * vm,
  */
 static uword
 hanat_protocol_input (vlib_main_t * vm,
-			 vlib_node_runtime_t * node,
-			 vlib_frame_t * frame)
+		      vlib_node_runtime_t * node,
+		      vlib_frame_t * frame)
 {
   u32 n_left_from, *from, *to_next;
   hanat_protocol_input_next_t next_index;
@@ -482,45 +482,59 @@ hanat_protocol_input (vlib_main_t * vm,
 	    u8 l;
 	  } tl_t;
 
-	  tl_t *tl = (tl_t *)(h0 + 1);
 
-	  switch(tl->t) {
-	  case HANAT_SESSION_BINDING:
-	    {
-	      hanat_option_session_binding_t *sp = (hanat_option_session_binding_t *)(h0 + 1);
+	  u16 offset = sizeof(udp_header_t) + sizeof(hanat_header_t);
+	  u16 plen = ntohs(u0->length);
 
-	      /*
-	       * Lookup based on session-id
-	       * Add data to pool
-	       * Ship cached packet
-	       */
-	      hanat_session_t *s = pool_elt_at_index(hm->db.sessions, ntohl(sp->session_id));
-	      if (!s) {
-		clib_warning("Could not find session %d", ntohl(sp->session_id));
-		goto done0;
+	  while (offset + 2 < plen) {
+	    u8 *p = (u8 *) ((u8 *) u0 + offset);
+	    tl_t *tl = (tl_t *)(p);
+	    offset += tl->l;
+	    switch(tl->t) {
+	    case HANAT_SESSION_BINDING:
+	      {
+		if (tl->l != sizeof(hanat_option_session_binding_t) &&
+		    tl->l != sizeof(hanat_option_session_binding_t) +4) {
+		  clib_warning("Invalid Session Binding TLV");
+		  continue;
+		}
+		hanat_option_session_binding_t *sp = (hanat_option_session_binding_t *)(p);
+
+		/*
+		 * Lookup based on session-id
+		 * Add data to pool
+		 * Ship cached packet
+		 */
+		hanat_session_t *s = pool_elt_at_index(hm->db.sessions, ntohl(sp->session_id));
+		if (!s) {
+		  clib_warning("Could not find session %d", ntohl(sp->session_id));
+		  continue;
+		}
+		ip4_address_t gre = {0};
+		if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
+		  memcpy(&gre, sp->opaque_data, 4);
+		hanat_worker_cache_update(s, now, ntohl(sp->instructions), ntohl(sp->fib_index),
+					  &sp->sa, &sp->da, sp->sp, sp->dp, gre);
+
+		/* Put cached packet back to fast worker node */
+		if (s->entry.buffer) {
+		  vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
+		  if (s->entry.flags & HANAT_SESSION_FLAG_TUNNEL)
+		    vec_add1(to_gre4_input, s->entry.buffer);
+		  else
+		    vec_add1(to_hanat_worker, s->entry.buffer);
+		  s->entry.buffer = 0;
+		}
 	      }
-	      ip4_address_t gre = {0};
-	      if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
-		memcpy(&gre, sp->opaque_data, 4);
-	      hanat_worker_cache_update(s, now, ntohl(sp->instructions), ntohl(sp->fib_index),
-					&sp->sa, &sp->da, sp->sp, sp->dp, gre);
-
-	      /* Put cached packet back to fast worker node */
-	      if (s->entry.buffer) {
-		vlib_node_increment_counter (vm, node->node_index, HANAT_PROTOCOL_INPUT_HELD_PACKET, 1);
-		if (s->entry.flags & HANAT_SESSION_FLAG_TUNNEL)
-		  vec_add1(to_gre4_input, s->entry.buffer);
-		else
-		  vec_add1(to_hanat_worker, s->entry.buffer);
-		s->entry.buffer = 0;
-	      }
+	      break;
+	    case HANAT_SESSION_DECLINE:
+	      clib_warning("Unimplemented TLV decline");
+	      break;
+	    default:
+	      clib_warning("Unimplemented TLV");
+	      error0 = HANAT_PROTOCOL_INPUT_NOT_IMPLEMENTED_YET;
+	      break;
 	    }
-	    break;
-	  case HANAT_SESSION_DECLINE:
-	    break;
-	  default:
-	    error0 = HANAT_PROTOCOL_INPUT_NOT_IMPLEMENTED_YET;
-	    break;
 	  }
 
 	done0:
