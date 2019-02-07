@@ -67,7 +67,7 @@ typedef enum
 #define _(sym, str) HANAT_WORKER_##sym,
   foreach_hanat_worker_counters
 #undef _
-    HANAT_WORKER_N_ERROR,
+  HANAT_WORKER_N_ERROR,
 } hanat_worker_counters_t;
 
 static char *hanat_worker_counter_strings[] = {
@@ -80,8 +80,9 @@ static char *hanat_worker_counter_strings[] = {
  * hanat-gre4_input Counters
  */
 #define foreach_hanat_gre4_input_counters		\
-  _(PKTS_DECAP, "GRE decap packets")			\
-  _(PKTS_ENCAP, "GRE encap packets")			\
+  _(CACHE_HIT_PACKETS, "cache hit")			\
+  _(CACHE_MISS_PACKETS, "cache miss")			\
+  _(CACHE_REFRESH_SENT, "session refresh")		\
   _(UNSUPPORTED_VERSION, "GRE unknown version")		\
   _(UNSUPPORTED_PROTOCOL, "GRE unsupported protocol")   \
   _(MISSING_KEY, "GRE missing key")
@@ -409,7 +410,7 @@ hanat_gre4_input (vlib_main_t * vm,
   n_left_from = frame->n_vectors;
   u32 next_index = node->cached_next_index;
   u32 cache_hit = 0, cache_miss = 0;
-
+  u32 *buffer_per_mapper = 0, *offset_per_mapper_buffer = 0, *to_node = 0;
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
@@ -457,6 +458,14 @@ hanat_gre4_input (vlib_main_t * vm,
 	  hanat_session_t *session;
 	  if (hanat_nat44_transform(&hm->db, vni0, inner_ip0, now, &out_fib_index0, &session)) {
 	    next0 = HANAT_GRE4_INPUT_NEXT_IP4_LOOKUP;
+
+	    if (now >= session->entry.last_refreshed + hm->cache_refresh_interval) {
+	      vec_validate_init_empty(buffer_per_mapper, session->mapper_id, 0);
+	      vec_validate_init_empty(offset_per_mapper_buffer, session->mapper_id, 0);
+	      hanat_refresh_session(session, buffer_per_mapper, offset_per_mapper_buffer, &to_node);
+	      session->entry.last_refreshed = now;
+	    }
+
 	    vnet_buffer (b0)->sw_if_index[VLIB_TX] = ~0; //out_fib_index0;
 	    cache_hit++;
 	  } else {
@@ -488,8 +497,13 @@ hanat_gre4_input (vlib_main_t * vm,
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
-  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_HIT_PACKETS, cache_hit);
-  vlib_node_increment_counter (vm, node->node_index, HANAT_WORKER_CACHE_MISS_PACKETS, cache_miss);
+  vlib_node_increment_counter (vm, node->node_index, HANAT_GRE4_INPUT_CACHE_HIT_PACKETS, cache_hit);
+  vlib_node_increment_counter (vm, node->node_index, HANAT_GRE4_INPUT_CACHE_MISS_PACKETS, cache_miss);
+  vlib_node_increment_counter (vm, node->node_index, HANAT_GRE4_INPUT_CACHE_REFRESH_SENT, vec_len(to_node));
+  hanat_send_to_node(vm, to_node, node, HANAT_WORKER_NEXT_IP4_LOOKUP);
+  vec_free(buffer_per_mapper);
+  vec_free(offset_per_mapper_buffer);
+  vec_free(to_node);
 
   return frame->n_vectors;
 }

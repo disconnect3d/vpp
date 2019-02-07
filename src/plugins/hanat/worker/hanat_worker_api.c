@@ -245,6 +245,8 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   rmp->mapper_id = htonl(s->mapper_id);
   memcpy(&rmp->key.sa, &s->key.sa.as_u32, 4);
   memcpy(&rmp->key.da, &s->key.da.as_u32, 4);
+  rmp->key.sp = s->key.sp;
+  rmp->key.dp = s->key.dp;
   rmp->key.proto = s->key.proto;
   rmp->key.fib_index = htonl(s->key.fib_index);
   rmp->instructions = htonl(s->entry.instructions);
