@@ -420,7 +420,7 @@ hanat_session_request_process (vlib_main_t * vm,
 
   rsp->type = HANAT_SESSION_BINDING;
   rsp->session_id = req->session_id;
-  rsp->fib_index = 0; // TODO
+  rsp->fib_index = clib_host_to_net_u32(tenant_id);
   rsp->length = sizeof (*rsp) + opaque_data_len;
   rsp->instructions = clib_host_to_net_u32 (instructions);
 
