@@ -221,16 +221,15 @@ vl_api_hanat_worker_mapper_get_buckets_t_handler(vl_api_hanat_worker_mapper_get_
   hanat_worker_main_t *hm = &hanat_worker_main;
   vl_api_hanat_worker_mapper_get_buckets_reply_t *rmp;
   int rv = 0, i;
+
   /* *INDENT-OFF* */
   REPLY_MACRO2(VL_API_HANAT_WORKER_MAPPER_GET_BUCKETS_REPLY,
   ({
-    memset(&rmp->mapper_index, 0, sizeof(u32)*1024);
-    for (i = 0; i < vec_len(hm->pool_db.lb_buckets); i++)
-      rmp->mapper_index[i] = htonl(hm->pool_db.lb_buckets[i]);
+   memset(&rmp->mapper_index, 0, sizeof(u32)*1024);
+   for (i = 0; i < vec_len(hm->pool_db.lb_buckets) - 1; i++)
+     rmp->mapper_index[i] = htonl(hm->pool_db.lb_buckets[i]);
   }));
   /* *INDENT-ON* */
-
-
 }
 
 static void
