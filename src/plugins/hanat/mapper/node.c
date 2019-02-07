@@ -338,7 +338,7 @@ hanat_session_request_process (vlib_main_t * vm,
   out_r_addr = req->desc.da;
 
   protocol = ip_proto_to_hanat_mapper_proto (req->desc.proto);
-  tenant_id = clib_net_to_host_u32 (req->desc.vni);
+  tenant_id = clib_net_to_host_u32 (req->desc.vni >> 8);
   pool_id = clib_net_to_host_u32 (req->pool_id);
 
   session = hanat_mapper_session_get (&nm->db,
@@ -420,6 +420,7 @@ hanat_session_request_process (vlib_main_t * vm,
 
   rsp->type = HANAT_SESSION_BINDING;
   rsp->session_id = req->session_id;
+  rsp->fib_index = 0; // TODO
   rsp->length = sizeof (*rsp) + opaque_data_len;
   rsp->instructions = clib_host_to_net_u32 (instructions);
 

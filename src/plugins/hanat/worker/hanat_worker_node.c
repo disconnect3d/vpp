@@ -105,41 +105,40 @@ static char *hanat_gre4_input_counter_strings[] = {
  * hanat-worker trace
  */
 typedef struct {
-  u32 sw_if_index;
-  u32 vni;
-  ip4_address_t src;
-  ip4_address_t dst;
-  u8 protocol;
-  u16 sport;
-  u16 dport;
+  hanat_session_t session;
 } hanat_worker_trace_t;
 
+#if 0
+static u8 *
+format_hanat_session (u8 * s, va_list * args)
+{
+  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
+  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+  hanat_session_t *s = va_arg (*args, hanat_session_t *);
+  if (!s) {
+    s = format (s, "SESSION: No session");
+    return s;
+  }
+    
+  s = format (s, "SESSION Key: %U: %U -> %U  instructions %d vni %d, src %U dst %U", t->sw_if_index, t->vni,
+	      format_ip4_address, &t->src, format_ip4_address, &t->dst);
+  return s;
+}
+
+#endif
 static u8 *
 format_hanat_worker_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+#if 0
   hanat_worker_trace_t *t = va_arg (*args, hanat_worker_trace_t *);
   s = format (s, "HANAT WORKER sw_if_index %d vni %d, src %U dst %U", t->sw_if_index, t->vni,
 	      format_ip4_address, &t->src, format_ip4_address, &t->dst);
+#endif
+  s = format(s, "HANAT WORKER");
   return s;
-}
 
-/*
- * hanat-gre4-input Trace
- */
-typedef struct {
-  u32 sw_if_index;
-} hanat_gre4_input_trace_t;
-
-static u8 *
-format_hanat_gre4_input_trace (u8 * s, va_list * args)
-{
-  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
-  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
-  //hanat_worker_trace_t *t = va_arg (*args, hanat_worker_trace_t *);
-  s = format (s, "HANAT GRE4 INPUT");
-  return s;
 }
 
 static bool
@@ -351,7 +350,7 @@ hanat_worker (vlib_main_t * vm,
 	   * Lookup and do transform in cache, if miss send to slow path node
 	   */
 	  u32 out_fib_index0;
-	  hanat_session_t *session;
+	  hanat_session_t *session = 0;
 	  if (hanat_nat44_transform(&hm->db, vni0, ip0, now, &out_fib_index0, &session)) {
 	    vnet_feature_next(&next0, b0);
 	    if (session->entry.gre.as_u32)
@@ -374,9 +373,8 @@ hanat_worker (vlib_main_t * vm,
           if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
                              && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
 	    hanat_worker_trace_t *t = vlib_add_trace (vm, node, b0, sizeof(*t));
-	    t->src = ip0->src_address;
-	    t->dst = ip0->dst_address;
-	    t->protocol = ip0->protocol;
+	    if (session)
+	      clib_memcpy(&t->session, session, sizeof(hanat_session_t));
 	  }
 
 	  /* verify speculative enqueue, maybe switch current next frame */
@@ -479,7 +477,10 @@ hanat_gre4_input (vlib_main_t * vm,
 
           if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
                              && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
-	    hanat_gre4_input_trace_t *tr = vlib_add_trace (vm, node, b0, sizeof(*tr));
+	    hanat_worker_trace_t *t = vlib_add_trace (vm, node, b0, sizeof(*t));
+	    if (session)
+	      clib_memcpy(&t->session, session, sizeof(hanat_session_t));
+
 	  }
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next,
@@ -525,7 +526,7 @@ VLIB_REGISTER_NODE(hanat_gre4_input_node) = {
      foreach_hanat_gre4_input_next
 #undef _
     },
-    .format_trace = format_hanat_gre4_input_trace,
+    .format_trace = format_hanat_worker_trace,
 };
 
 /* Hook up input features */
