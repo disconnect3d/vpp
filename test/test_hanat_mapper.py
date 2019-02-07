@@ -91,6 +91,12 @@ class TestHANATmapper(VppTestCase):
 
         users = self.vapi.hanat_mapper_user_dump()
         users_before = len(users)
+        stats = self.statistics.get_counter('/hanat/mapper/total-users')
+        usersn = stats[0][0]
+        stats = self.statistics.get_counter('/hanat/mapper/total-mappings')
+        mappingsn = stats[0][0]
+        stats = self.statistics.get_counter('/hanat/mapper/total-sessions')
+        sessionsn = stats[0][0]
 
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
@@ -129,6 +135,13 @@ class TestHANATmapper(VppTestCase):
         stats = self.statistics.get_counter(
             '/hanat/mapper/state-sync/add-event-recv')
         self.assertEqual(stats[0][0], 2)
+
+        stats = self.statistics.get_counter('/hanat/mapper/total-users')
+        self.assertEqual(stats[0][0] - usersn, 2)
+        stats = self.statistics.get_counter('/hanat/mapper/total-mappings')
+        self.assertEqual(stats[0][0] - mappingsn, 2)
+        stats = self.statistics.get_counter('/hanat/mapper/total-sessions')
+        self.assertEqual(stats[0][0] - sessionsn, 2)
 
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /

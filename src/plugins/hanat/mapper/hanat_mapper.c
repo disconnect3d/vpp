@@ -306,6 +306,66 @@ hanat_mapper_set_pool_failover (u32 pool_id, u32 failover_index)
   return 0;
 }
 
+typedef struct
+{
+  u32 pool_id;
+  u32 failover_index;
+  u32 thread_index;
+} session_resync_walk_ctx_t;
+
+static int
+session_resync_walk (hanat_mapper_session_t * session,
+		     hanat_mapper_mapping_t * mapping, void *arg)
+{
+  session_resync_walk_ctx_t *ctx = arg;
+  hanat_state_sync_event_t event;
+
+  if (mapping->pool_id == ctx->pool_id)
+    {
+      clib_memset (&event, 0, sizeof (event));
+      event.event_type = HANAT_STATE_SYNC_ADD;
+      event.in_l_addr = mapping->in_addr.as_u32;
+      event.in_r_addr = session->in_r_addr.as_u32;
+      event.in_l_port = mapping->in_port;
+      event.in_r_port = session->in_r_port;
+      event.out_l_addr = mapping->out_addr.as_u32;
+      event.out_r_addr = session->out_r_addr.as_u32;
+      event.out_l_port = mapping->out_port;
+      event.out_r_port = session->out_r_port;
+      event.tenant_id = clib_host_to_net_u32 (mapping->tenant_id);
+      event.pool_id = clib_host_to_net_u32 (mapping->pool_id);
+      event.protocol = mapping->proto;
+      event.opaque_len = (u8) vec_len (session->opaque_data);
+      hanat_state_sync_event_add (&event, session->opaque_data, 0,
+				  ctx->failover_index, ctx->thread_index);
+    }
+
+  return 0;
+}
+
+int
+hanat_mapper_pool_resync (u32 pool_id)
+{
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  hanat_mapper_addr_pool_t *pool;
+
+  pool = get_pool_by_pool_id (pool_id);
+  if (!pool)
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+  if (pool->failover_index == ~0)
+    return VNET_API_ERROR_UNKNOWN_DESTINATION;
+
+  session_resync_walk_ctx_t ctx = {
+    .pool_id = pool_id,
+    .failover_index = pool->failover_index,
+    .thread_index = 0,
+  };
+  hanat_mapper_session_walk (&nm->db, session_resync_walk, &ctx);
+  // flush
+  hanat_state_sync_event_add (0, 0, 1, pool->failover_index, 0);
+  return 0;
+}
+
 int
 hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
 				     ip4_address_t * external_addr,
