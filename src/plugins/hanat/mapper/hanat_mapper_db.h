@@ -74,6 +74,7 @@ typedef struct
   vlib_simple_counter_main_t total_users;
   vlib_simple_counter_main_t total_mappings;
   vlib_simple_counter_main_t total_sessions;
+  vlib_simple_counter_main_t timeouted_sessions_deleted;
 } hanat_mapper_db_t;
 
 int hanat_mapper_db_init (hanat_mapper_db_t * hanat_mapper_db,

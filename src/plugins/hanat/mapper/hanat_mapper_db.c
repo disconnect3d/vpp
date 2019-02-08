@@ -123,6 +123,13 @@ hanat_mapper_db_init (hanat_mapper_db_t * hanat_mapper_db,
     "/hanat/mapper/total-sessions";
   vlib_validate_simple_counter (&hanat_mapper_db->total_sessions, 0);
   vlib_zero_simple_counter (&hanat_mapper_db->total_sessions, 0);
+  hanat_mapper_db->timeouted_sessions_deleted.name =
+    "timeouted-sessions-deleted";
+  hanat_mapper_db->timeouted_sessions_deleted.stat_segment_name =
+    "/hanat/mapper/timeouted-sessions-deleted";
+  vlib_validate_simple_counter (&hanat_mapper_db->timeouted_sessions_deleted,
+				0);
+  vlib_zero_simple_counter (&hanat_mapper_db->timeouted_sessions_deleted, 0);
 
   return 0;
 }
@@ -490,6 +497,9 @@ is_session_idle (clib_bihash_kv_16_8_t * kv, void *arg, u8 in2out)
 	hanat_mapper_user_free (db, user);
 
       pool_put (db->sessions, session);
+
+      vlib_increment_simple_counter (&db->timeouted_sessions_deleted, 0, 0,
+				     1);
 
       return 1;
     }
