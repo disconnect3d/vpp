@@ -143,7 +143,7 @@ hanat_session_refresh_process (vlib_main_t * vm,
 	  now = vlib_time_now (vm);
 	  session_reset_timeout (nm, session, now);
 
-	  // TODO: check and ifx if needed how are req->packets and req->bytes populated
+	  // TODO: check and fix if needed how are req->packets and req->bytes populated
 	  // they should contain only difference between last an current update send
 	  session->total_pkts += req->packets;
 	  session->total_bytes += req->bytes;
@@ -246,11 +246,28 @@ hanat_in2out_add_or_get_session_and_mapping (f64 now,
 	}
     }
 
-  session = hanat_mapper_session_create (&nm->db, mapping,
-					 &out_r_addr, req->desc.dp,
-					 &out_r_addr, req->desc.dp,
-					 user, now, req->opaque_data,
-					 req->length - sizeof (*req));
+  if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
+    {
+      session = hanat_mapper_session_create (&nm->db, mapping,
+					     &out_r_addr, req->desc.dp,
+					     &out_r_addr, req->desc.dp,
+					     user, now, req->opaque_data,
+					     req->length - sizeof (*req));
+    }
+  else
+    {
+      // there is only one id so we use it as src_port and dst_port
+      // in2out uses id that we got from request (req->desc.sp == req->desc.dp)
+      //  key: mapping->in_port == session->in_r_port
+      // out2in uses random generated port as id (from mapping->out_port)
+      // key: session->out_r_port == mapping->out_port
+      session = hanat_mapper_session_create (&nm->db, mapping,
+					     &out_r_addr, req->desc.sp,
+					     &out_r_addr, mapping->out_port,
+					     user, now, req->opaque_data,
+					     req->length - sizeof (*req));
+    }
+
   if (!session)
     {
       clib_warning ("hanat-protocol: failed creating session");
@@ -345,6 +362,7 @@ hanat_session_request_process (vlib_main_t * vm,
 				      &in_l_addr, req->desc.sp,
 				      &out_r_addr, req->desc.dp,
 				      protocol, tenant_id, is_in2out);
+
   // slow path, create session
   if (PREDICT_FALSE (!session))
     {
@@ -360,6 +378,10 @@ hanat_session_request_process (vlib_main_t * vm,
 	}
       else
 	{
+          // we don't support icmp out2in without existing session
+          if (PREDICT_FALSE (protocol == IP_PROTOCOL_ICMP))
+            return 1;
+
 	  rc = hanat_out2in_add_or_get_session_and_mapping (now,
 							    req, protocol,
 							    tenant_id,
@@ -397,20 +419,37 @@ hanat_session_request_process (vlib_main_t * vm,
 
   if (is_in2out)
     {
-      instructions = HANAT_INSTR_SOURCE_ADDRESS | HANAT_INSTR_SOURCE_PORT;
+      instructions = HANAT_INSTR_SOURCE_ADDRESS |
+        HANAT_INSTR_SOURCE_PORT;
       rsp->sa = mapping->out_addr;
-      rsp->sp = mapping->out_port;
       rsp->da = session->out_r_addr;
-      rsp->dp = session->out_r_port;
+
+      if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
+        {
+          rsp->sp = mapping->out_port;
+          rsp->dp = session->out_r_port;
+        }
+      else
+        {
+          rsp->sp = rsp->dp = mapping->out_port;
+        }
     }
   else
     {
       instructions = HANAT_INSTR_DESTINATION_ADDRESS |
 	HANAT_INSTR_DESTINATION_PORT;
       rsp->sa = session->in_r_addr;
-      rsp->sp = session->in_r_port;
       rsp->da = mapping->in_addr;
-      rsp->dp = mapping->in_port;
+
+      if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
+        {
+          rsp->sp = session->in_r_port;
+          rsp->dp = mapping->in_port;
+        }
+      else
+        {
+          rsp->sp = rsp->dp = session->in_r_port;
+        }
     }
 
   // TODO: check udp0 buffer if it is large enought to hold the reply
