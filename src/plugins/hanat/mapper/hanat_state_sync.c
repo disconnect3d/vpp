@@ -248,9 +248,10 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
     {
       if (failover)
 	{
+	  *index = failover - sm->failovers;
 	  clib_warning ("add: failover %U:%d already exists",
 			format_ip4_address, addr, port);
-	  return VNET_API_ERROR_VALUE_EXIST;
+	  return 0;
 	}
 
       if (!pool_elts (sm->failovers))
