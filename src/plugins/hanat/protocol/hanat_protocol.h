@@ -41,6 +41,8 @@
 #undef vl_typedefs
 typedef vl_api_hanat_instructions_t hanat_instructions_t;
 
+#define HANAT_PROTOCOL_MAX_SIZE		1400
+
 /*
  * Message header
  */

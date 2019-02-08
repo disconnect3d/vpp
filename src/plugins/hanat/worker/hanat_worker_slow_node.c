@@ -226,11 +226,12 @@ hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session
   h->udp.checksum = 0;
 
   b->current_length = offset;
-
-  clib_warning("Session request packet %U", format_ip4_header, &h->ip);
   offset_per_mapper_buffer[session->mapper_id] = offset;
-}
 
+  if (offset > HANAT_PROTOCOL_MAX_SIZE) /* Limit packet size */
+    buffer_per_mapper[session->mapper_id] = 0;
+  clib_warning("Session request packet %U", format_ip4_header, &h->ip);
+}
 
 static void
 hanat_worker_cache_update(hanat_session_t *s, f64 now, hanat_instructions_t instructions,

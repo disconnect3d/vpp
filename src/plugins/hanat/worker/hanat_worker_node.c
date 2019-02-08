@@ -246,6 +246,9 @@ hanat_refresh_session (hanat_session_t *session, u32 *buffer_per_mapper, u32 *of
 
   b->current_length = offset;
 
+  if (offset > HANAT_PROTOCOL_MAX_SIZE) /* Limit packet size */
+    buffer_per_mapper[session->mapper_id] = 0;
+
   clib_warning("Session refresh packet %U", format_ip4_header, &h->ip);
   offset_per_mapper_buffer[session->mapper_id] = offset;
 }
