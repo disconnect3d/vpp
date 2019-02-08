@@ -201,7 +201,7 @@ vl_api_hanat_worker_cache_clear_t_handler(vl_api_hanat_worker_cache_clear_t *mp)
 
   rv = hanat_worker_cache_clear();
 
-  REPLY_MACRO (VL_API_HANAT_WORKER_CACHE_ADD_REPLY);
+  REPLY_MACRO (VL_API_HANAT_WORKER_CACHE_CLEAR_REPLY);
 }
 
 static void
