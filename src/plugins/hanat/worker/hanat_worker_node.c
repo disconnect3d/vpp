@@ -55,7 +55,7 @@ typedef enum {
 } hanat_gre4_input_next_t;
 
 /*
- * hanat-worker Counters
+ * hanat-worker counters
  */
 #define foreach_hanat_worker_counters		\
   _(CACHE_HIT_PACKETS, "cache hit")		\
@@ -77,7 +77,7 @@ static char *hanat_worker_counter_strings[] = {
 };
 
 /*
- * hanat-gre4_input Counters
+ * hanat-gre4_input counters
  */
 #define foreach_hanat_gre4_input_counters		\
   _(CACHE_HIT_PACKETS, "cache hit")			\
@@ -109,37 +109,24 @@ typedef struct {
   hanat_session_t session;
 } hanat_worker_trace_t;
 
-#if 0
 static u8 *
-format_hanat_session (u8 * s, va_list * args)
+format_hanat_session_key (u8 *s, va_list *args)
 {
-  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
-  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
-  hanat_session_t *s = va_arg (*args, hanat_session_t *);
-  if (!s) {
-    s = format (s, "SESSION: No session");
-    return s;
-  }
-    
-  s = format (s, "SESSION Key: %U: %U -> %U  instructions %d vni %d, src %U dst %U", t->sw_if_index, t->vni,
-	      format_ip4_address, &t->src, format_ip4_address, &t->dst);
-  return s;
+  hanat_session_key_t *k = va_arg(*args, hanat_session_key_t *);
+  return format (s, "%U: %U:%d -> %U:%d fib_index %d",
+		 format_ip_protocol, k->proto,
+		 format_ip4_address, &k->sa, k->sp,
+		 format_ip4_address, &k->da, k->dp,
+		 k->fib_index);
 }
 
-#endif
 static u8 *
 format_hanat_worker_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
-#if 0
   hanat_worker_trace_t *t = va_arg (*args, hanat_worker_trace_t *);
-  s = format (s, "HANAT WORKER sw_if_index %d vni %d, src %U dst %U", t->sw_if_index, t->vni,
-	      format_ip4_address, &t->src, format_ip4_address, &t->dst);
-#endif
-  s = format(s, "HANAT WORKER");
-  return s;
-
+  return format (s, "HANAT WORKER: %U", format_hanat_session_key, &t->session.key);
 }
 
 static bool
@@ -455,7 +442,7 @@ hanat_gre4_input (vlib_main_t * vm,
 	   */
 	  u32 out_fib_index0;
 	  ip4_header_t *inner_ip0 = vlib_buffer_get_current (b0);
-	  hanat_session_t *session;
+	  hanat_session_t *session = 0;
 	  if (hanat_nat44_transform(&hm->db, vni0, inner_ip0, now, &out_fib_index0, &session)) {
 	    next0 = HANAT_GRE4_INPUT_NEXT_IP4_LOOKUP;
 
@@ -483,7 +470,6 @@ hanat_gre4_input (vlib_main_t * vm,
 	    b0->error = node->errors[error0];
 	    next0 = HANAT_GRE4_INPUT_NEXT_DROP;
 	  }
-
           if (PREDICT_FALSE ((node->flags & VLIB_NODE_FLAG_TRACE)
                              && (b0->flags & VLIB_BUFFER_IS_TRACED))) {
 	    hanat_worker_trace_t *t = vlib_add_trace (vm, node, b0, sizeof(*t));
