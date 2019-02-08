@@ -118,7 +118,11 @@ hanat_mapper_set_out_addr_and_port (u32 pool_id,
 #define _(N, id, n, s) \
             case HANAT_MAPPER_PROTOCOL_##N: \
               if (clib_bitmap_get_no_check (address->busy_##n##_port_bitmap, port_host_byte_order)) \
-                return VNET_API_ERROR_INSTANCE_IN_USE; \
+                { \
+                  clib_warning ("port %d already in use addr %U pool-id %d", \
+                                port_host_byte_order, format_ip4_address, addr, pool_id); \
+                  return VNET_API_ERROR_INSTANCE_IN_USE; \
+                } \
               clib_bitmap_set_no_check (address->busy_##n##_port_bitmap, port_host_byte_order, 1); \
               if (port_host_byte_order > 1024) \
                 address->busy_##n##_ports++; \
@@ -130,6 +134,9 @@ hanat_mapper_set_out_addr_and_port (u32 pool_id,
 	  return VNET_API_ERROR_INVALID_VALUE;
 	}
     }
+
+  clib_warning ("addr %U in pool-id %d not found", format_ip4_address, addr,
+		pool_id);
 
   return 1;
 }
@@ -216,6 +223,7 @@ hanat_mapper_enable (u16 port)
 
   nm->port = port;
   udp_register_dst_port (nm->vlib_main, port, hanat_mapper_node.index, 1);
+  clib_warning ("mapper listening on port %d for HANAT proto", port);
 
   return 0;
 }
@@ -244,7 +252,10 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
   if (is_add)
     {
       if (pool)
-	return VNET_API_ERROR_VALUE_EXIST;
+	{
+	  clib_warning ("add: pool-id %d already exists", pool_id);
+	  return VNET_API_ERROR_VALUE_EXIST;
+	}
 
       pool_get (nm->ext_addr_pool, pool);
       pool->pool_id = pool_id;
@@ -273,7 +284,10 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
   else
     {
       if (!pool)
-	return VNET_API_ERROR_NO_SUCH_ENTRY;
+	{
+	  clib_warning ("del: pool-id %d not found", pool_id);
+	  return VNET_API_ERROR_NO_SUCH_ENTRY;
+	}
 
       vec_foreach (address, pool->addresses)
       {
@@ -299,9 +313,13 @@ hanat_mapper_set_pool_failover (u32 pool_id, u32 failover_index)
 
   pool = get_pool_by_pool_id (pool_id);
   if (!pool)
-    return VNET_API_ERROR_NO_SUCH_ENTRY;
+    {
+      clib_warning ("pool-id %d not found", pool_id);
+      return VNET_API_ERROR_NO_SUCH_ENTRY;
+    }
 
   pool->failover_index = failover_index;
+  clib_warning ("pool-id %d failover-index %d", pool_id, failover_index);
 
   return 0;
 }
@@ -384,7 +402,10 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
   if (is_add)
     {
       if (mapping)
-	return VNET_API_ERROR_VALUE_EXIST;
+	{
+	  clib_warning ("add: mapping already exists");
+	  return VNET_API_ERROR_VALUE_EXIST;
+	}
 
       rv =
 	hanat_mapper_set_out_addr_and_port (pool_id, protocol, external_addr,
@@ -402,7 +423,10 @@ hanat_mapper_add_del_static_mapping (ip4_address_t * local_addr,
   else
     {
       if (!mapping)
-	return VNET_API_ERROR_NO_SUCH_ENTRY;
+	{
+	  clib_warning ("del: mapping not found");
+	  return VNET_API_ERROR_NO_SUCH_ENTRY;
+	}
 
       hanat_mapper_mapping_free (&nm->db, mapping, 1);
     }

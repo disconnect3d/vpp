@@ -105,6 +105,7 @@ hanat_state_sync_ack_recv (u32 seq)
 				   1);
     vec_free (sm->resend_queue[i].data);
     vec_del1 (sm->resend_queue, i);
+    clib_warning ("ACK for seq %d received", clib_net_to_host_u32 (seq));
 
     return;
   }
@@ -137,6 +138,8 @@ hanat_state_sync_resend_scan (f64 now)
 
     if (sm->resend_queue[i].retry_count >= HANAT_STATE_SYNC_RETRIES)
       {
+	clib_warning ("state sync seq %d missed",
+		      clib_net_to_host_u32 (sm->resend_queue[i].seq));
 	vec_add1 (to_delete, i);
 	vlib_increment_simple_counter (&sm->counters
 				       [HANAT_STATE_SYNC_COUNTER_MISSED_COUNT],
@@ -144,6 +147,8 @@ hanat_state_sync_resend_scan (f64 now)
 	continue;
       }
 
+    clib_warning ("state sync seq %d resend",
+		  clib_net_to_host_u32 (sm->resend_queue[i].seq));
     sm->resend_queue[i].retry_count++;
     vlib_increment_simple_counter (&sm->counters
 				   [HANAT_STATE_SYNC_COUNTER_RETRY_COUNT], 0,
@@ -205,6 +210,7 @@ hanat_state_sync_set_listener (ip4_address_t * addr, u16 port, u32 path_mtu)
   sm->state_sync_path_mtu = path_mtu;
 
   udp_register_dst_port (sm->vlib_main, port, hanat_state_sync_node.index, 1);
+  clib_warning ("mapper listening on port %d for state sync", port);
 
   return 0;
 }
@@ -241,7 +247,11 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
   if (is_add)
     {
       if (failover)
-	return VNET_API_ERROR_VALUE_EXIST;
+	{
+	  clib_warning ("add: failover %U:%d already exists",
+			format_ip4_address, addr, port);
+	  return VNET_API_ERROR_VALUE_EXIST;
+	}
 
       if (!pool_elts (sm->failovers))
 	vlib_process_signal_event (sm->vlib_main,
@@ -252,11 +262,17 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
       failover->port = port;
       failover->ip_address.as_u32 = addr->as_u32;
       *index = failover - sm->failovers;
+      clib_warning ("failover %U:%d (index %d) created", format_ip4_address,
+		    addr, port, failover - sm->failovers);
     }
   else
     {
       if (!failover)
-	return VNET_API_ERROR_NO_SUCH_ENTRY;
+	{
+	  clib_warning ("del: failover %U:%d not found", format_ip4_address,
+			addr, port);
+	  return VNET_API_ERROR_NO_SUCH_ENTRY;
+	}
 
       /* flush chached events */
       hanat_state_sync_event_add (0, 0, 1, failover - sm->failovers, 0);

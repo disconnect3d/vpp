@@ -310,8 +310,12 @@ hanat_out2in_add_or_get_session_and_mapping (f64 now,
   user = hanat_mapper_user_get (&nm->db, &mapping->in_addr, tenant_id);
   if (!user)
     {
-      clib_warning ("hanat-protocol: out2in no user");
-      return 1;
+      user = hanat_mapper_user_create (&nm->db, &mapping->in_addr, tenant_id);
+      if (!user)
+	{
+	  clib_warning ("hanat-protocol: failed creating user");
+	  return 1;
+	}
     }
 
   session = hanat_mapper_session_create (&nm->db, mapping,
@@ -378,9 +382,9 @@ hanat_session_request_process (vlib_main_t * vm,
 	}
       else
 	{
-          // we don't support icmp out2in without existing session
-          if (PREDICT_FALSE (protocol == IP_PROTOCOL_ICMP))
-            return 1;
+	  // we don't support icmp out2in without existing session
+	  if (PREDICT_FALSE (protocol == IP_PROTOCOL_ICMP))
+	    return 1;
 
 	  rc = hanat_out2in_add_or_get_session_and_mapping (now,
 							    req, protocol,
@@ -419,20 +423,19 @@ hanat_session_request_process (vlib_main_t * vm,
 
   if (is_in2out)
     {
-      instructions = HANAT_INSTR_SOURCE_ADDRESS |
-        HANAT_INSTR_SOURCE_PORT;
+      instructions = HANAT_INSTR_SOURCE_ADDRESS | HANAT_INSTR_SOURCE_PORT;
       rsp->sa = mapping->out_addr;
       rsp->da = session->out_r_addr;
 
       if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
-        {
-          rsp->sp = mapping->out_port;
-          rsp->dp = session->out_r_port;
-        }
+	{
+	  rsp->sp = mapping->out_port;
+	  rsp->dp = session->out_r_port;
+	}
       else
-        {
-          rsp->sp = rsp->dp = mapping->out_port;
-        }
+	{
+	  rsp->sp = rsp->dp = mapping->out_port;
+	}
     }
   else
     {
@@ -442,14 +445,14 @@ hanat_session_request_process (vlib_main_t * vm,
       rsp->da = mapping->in_addr;
 
       if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
-        {
-          rsp->sp = session->in_r_port;
-          rsp->dp = mapping->in_port;
-        }
+	{
+	  rsp->sp = session->in_r_port;
+	  rsp->dp = mapping->in_port;
+	}
       else
-        {
-          rsp->sp = rsp->dp = session->in_r_port;
-        }
+	{
+	  rsp->sp = rsp->dp = session->in_r_port;
+	}
     }
 
   // TODO: check udp0 buffer if it is large enought to hold the reply
@@ -459,7 +462,7 @@ hanat_session_request_process (vlib_main_t * vm,
 
   rsp->type = HANAT_SESSION_BINDING;
   rsp->session_id = req->session_id;
-  rsp->fib_index = clib_host_to_net_u32(mapping->tenant_id);
+  rsp->fib_index = clib_host_to_net_u32 (mapping->tenant_id);
   rsp->length = sizeof (*rsp) + opaque_data_len;
   rsp->instructions = clib_host_to_net_u32 (instructions);
 
@@ -616,14 +619,15 @@ hanat_mapper_node_fn (vlib_main_t * vm,
 	      ip0->src_address.data_u32 = dst_addr0;
 	      ip0->dst_address.data_u32 = src_addr0;
 	      ip0->ttl = host_config_ttl;
-	      ip0->length = htons(ntohs(udp0->length) + sizeof(ip4_header_t));
-	      ip0->checksum = ip4_header_checksum(ip0);
+	      ip0->length =
+		htons (ntohs (udp0->length) + sizeof (ip4_header_t));
+	      ip0->checksum = ip4_header_checksum (ip0);
 	      udp0->checksum = 0;
 	      src_port0 = udp0->src_port;
 	      dst_port0 = udp0->dst_port;
 	      udp0->src_port = dst_port0;
 	      udp0->dst_port = src_port0;
-	      b0->current_length = ntohs(ip0->length);
+	      b0->current_length = ntohs (ip0->length);
 
 	      ok_packets++;
 	    }
