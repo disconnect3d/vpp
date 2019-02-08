@@ -154,7 +154,7 @@ find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, u32 mode)
     if (mid == ~0) {
       if (vec_len(hm->pool_db.lb_buckets) == 0)
 	  return ~0;
-      u32 i = ip->src_address.as_u32 % hm->pool_db.n_buckets;
+      u32 i = htonl(ip->src_address.as_u32) % hm->pool_db.n_buckets;
       mid = hm->pool_db.lb_buckets[i];
     }
   }
