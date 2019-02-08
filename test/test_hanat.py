@@ -117,6 +117,31 @@ class TestHANAT(VppTestCase):
         # receive ICMP error message
         # pkt = self.pg0.get_capture(1)
 
+    def test_in2out_icmp(self):
+
+        self.configure_plugins()
+
+        pkt = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
+               IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
+               ICMP(type=8, code=0, id=0, seq=0))
+
+        self.pg0.add_stream(pkt)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+
+        # HANAT Session Request packet
+        # forward packet from worker to mapper
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
+
+        # HANAT Session Binding packet
+        # forward packet from mapper to worker
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
+
+        pkt = self.pg1.get_capture(1)
+
+
     def test_in2out_session(self):
 
         self.configure_plugins()
