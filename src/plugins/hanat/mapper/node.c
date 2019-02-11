@@ -383,7 +383,7 @@ hanat_session_request_process (vlib_main_t * vm,
       else
 	{
 	  // we don't support icmp out2in without existing session
-	  if (PREDICT_FALSE (protocol == IP_PROTOCOL_ICMP))
+	  if (PREDICT_FALSE (protocol == HANAT_MAPPER_PROTOCOL_ICMP))
 	    return 1;
 
 	  rc = hanat_out2in_add_or_get_session_and_mapping (now,
