@@ -120,6 +120,7 @@ class TestHANATmapper(VppTestCase):
         p = capture[0]
         self.assertEqual(p[HANATStateSync].sequence_number, 1)
         self.assertEqual(p[HANATStateSync].flags, 'ACK')
+        self.assertEqual(p[HANATStateSync].version, 1)
         stats = self.statistics.get_counter(
             '/hanat/mapper/state-sync/ack-send')
         self.assertEqual(stats[0][0], 1)
@@ -159,6 +160,7 @@ class TestHANATmapper(VppTestCase):
         p = capture[0]
         self.assertEqual(p[HANATStateSync].sequence_number, 2)
         self.assertEqual(p[HANATStateSync].flags, 'ACK')
+        self.assertEqual(p[HANATStateSync].version, 1)
 
         users = self.vapi.hanat_mapper_user_dump()
         self.assertEqual(len(users) - users_before, 1)
@@ -275,6 +277,7 @@ class TestHANATmapper(VppTestCase):
         capture = self.pg0.get_capture(1)
         p = capture[0]
         self.assertGreater(p[HANATStateSync].sequence_number, seq)
+        self.assertEqual(p[HANATStateSync].version, 1)
 
         self.pg_enable_capture(self.pg_interfaces)
         sleep(12)
@@ -288,9 +291,23 @@ class TestHANATmapper(VppTestCase):
         for packet in capture:
             self.assertEqual(packet, p)
 
+        self.vapi.papi.hanat_mapper_set_pool_failover(
+            pool_id=2, failover_index=0xFFFFFFFF)
+        pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        self.assertEqual(len(pool), 1)
+        self.assertEqual(pool[0].failover_index, 0xFFFFFFFF)
         self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
                                                           pool_id=2,
                                                           is_add=False)
+        pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        self.assertEqual(len(pool), 0)
+
+        rv = self.vapi.papi.hanat_mapper_add_del_state_sync_failover(
+            ip_address=self.pg0.remote_ip4,
+            port=self.remote_sync_port,
+            is_add=False)
+        failover = self.vapi.papi.hanat_mapper_state_sync_failover_dump()
+        self.assertEqual(len(failover), 0)
 
     def test_hanat_protocol(self):
         session_id = 1
@@ -298,6 +315,9 @@ class TestHANATmapper(VppTestCase):
         self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='10.1.1.1/32',
                                                           pool_id=2,
                                                           is_add=True)
+
+        rv = self.vapi.papi.hanat_mapper_get()
+        self.assertEqual(rv.port, self.mapper_port)
 
         # in2out
         p1 = (Ether(dst=self.pg1.local_mac, src=self.pg1.remote_mac) /
