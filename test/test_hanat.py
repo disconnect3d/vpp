@@ -52,36 +52,31 @@ class TestHANAT(VppTestCase):
         rv = self.vapi.papi.hanat_mapper_enable(port=self.mapper_port)
         self.assertEqual(rv.retval, 0)
 
-        rv = self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix=prefix,
-                                                               pool_id=mapper_pool_id,
-                                                               is_add=True)
+        rv = self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(
+            prefix=prefix, pool_id=mapper_pool_id, is_add=True)
         self.assertEqual(rv.retval, 0)
 
         if not worker_pool_id:
             worker_pool_id = mapper_pool_id
 
-        rv = self.vapi.papi.hanat_worker_mapper_add_del(is_add=True,
-                                                        pool_id=worker_pool_id,
-                                                        pool=prefix,
-                                                        src=self.pg2.local_ip4,
-                                                        mapper=self.pg2.remote_ip4,
-                                                        udp_port=self.mapper_port)
+        rv = self.vapi.papi.hanat_worker_mapper_add_del(
+            is_add=True, pool_id=worker_pool_id, pool=prefix,
+            src=self.pg2.local_ip4, mapper=self.pg2.remote_ip4,
+            udp_port=self.mapper_port)
         self.assertEqual(rv.retval, 0)
 
         buckets = [rv.mapper_index]*1024
         rv = self.vapi.papi.hanat_worker_mapper_buckets(mapper_index=buckets)
         self.assertEqual(rv.retval, 0)
 
-        mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
-        rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg0.sw_if_index,
-                                                           mode=mode,
-                                                           is_add=True)
+        mode = VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_INSIDE
+        rv = self.vapi.papi.hanat_worker_interface_add_del(
+            sw_if_index=self.pg0.sw_if_index, mode=mode, is_add=True)
         self.assertEqual(rv.retval, 0)
 
-        mode=VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE
-        rv = self.vapi.papi.hanat_worker_interface_add_del(sw_if_index=self.pg1.sw_if_index,
-                                                           mode=mode,
-                                                           is_add=True)
+        mode = VppEnum.vl_api_hanat_worker_if_mode_t.HANAT_WORKER_IF_OUTSIDE
+        rv = self.vapi.papi.hanat_worker_interface_add_del(
+            sw_if_index=self.pg1.sw_if_index, mode=mode, is_add=True)
         self.assertEqual(rv.retval, 0)
 
         rv = self.vapi.papi.hanat_worker_enable(udp_port=self.worker_port)
@@ -97,8 +92,8 @@ class TestHANAT(VppTestCase):
         self.logger.error(self.vapi.cli("clear counters"))
 
         pkt = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
-              IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
-              TCP(sport=8000, dport=80))
+               IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
+               TCP(sport=8000, dport=80))
         self.pg0.add_stream(pkt)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -141,18 +136,18 @@ class TestHANAT(VppTestCase):
 
         pkt = self.pg1.get_capture(1)
 
-
     def test_in2out_session(self):
 
         self.configure_plugins()
 
-        ## in2out packet
+        # in2out packet
         # create packet that should be translated based on mapper config
         pkts = list()
         for sport, dport in ((9000, 90), (8000, 80)):
-            pkts.append(Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
-                        IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
-                        TCP(sport=sport, dport=dport))
+            pkts.append(
+                Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
+                IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
+                TCP(sport=sport, dport=dport))
         self.pg0.add_stream(pkts)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -185,10 +180,10 @@ class TestHANAT(VppTestCase):
         self.assertEqual(pkt[HANATSessionBinding].dport, 90)
 
         # TODO: update HANAT protocol definition
-        #ip4_1 = pkt[HANATSessionBinding][0].src
-        #ip4_2 = pkt[HANATSessionBinding][1].src
-        #sport_1 = pkt[HANATSessionBinding][0].sport
-        #sport_2 = pkt[HANATSessionBinding][1].sport
+        # ip4_1 = pkt[HANATSessionBinding][0].src
+        # ip4_2 = pkt[HANATSessionBinding][1].src
+        # sport_1 = pkt[HANATSessionBinding][0].sport
+        # sport_2 = pkt[HANATSessionBinding][1].sport
 
         # get packet after NAT translation (in2out)
         pkt_1, pkt_2 = pkts = self.pg1.get_capture(2)
@@ -202,7 +197,7 @@ class TestHANAT(VppTestCase):
         self.assertEqual(pkt_1[TCP].dport, 90)
         self.assertEqual(pkt_2[TCP].dport, 80)
 
-        ## out2in packet (aka reply)
+        # out2in packet (aka reply)
         for pkt in self.swap_and_send(self.pg1, pkts, True):
             self.logger.error(pkt.show2())
 
@@ -270,4 +265,3 @@ class TestHANAT(VppTestCase):
         pkt = pg.get_capture(1)[idx]
 
         return self.swap_and_send(pg, pkt)[0]
-
