@@ -144,6 +144,8 @@ typedef int (*hanat_mapper_session_walk_fn_t) (hanat_mapper_session_t *
 void hanat_mapper_session_walk (hanat_mapper_db_t * db,
 				hanat_mapper_session_walk_fn_t fn, void *ctx);
 
+void hanat_mapper_free_ext_addr_pool (hanat_mapper_db_t * db, u32 pool_id);
+
 #endif /* __included_hanat_mapper_db_h__ */
 
 /*

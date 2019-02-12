@@ -291,7 +291,7 @@ hanat_mapper_add_del_ext_addr_pool (ip4_address_t * prefix, u8 prefix_len,
 
       vec_foreach (address, pool->addresses)
       {
-	//TODO: delete sessions using address
+	hanat_mapper_free_ext_addr_pool (&nm->db, pool_id);
 #define _(N, id, n, s) \
       clib_bitmap_free (address->busy_##n##_port_bitmap);
 	foreach_hanat_mapper_protocol

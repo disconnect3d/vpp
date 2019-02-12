@@ -49,7 +49,7 @@ class TestHANAT(VppTestCase):
         if not mapper_pool_id:
             mapper_pool_id = self.pool_id
 
-        rv = self.vapi.hanat_mapper_enable(self.mapper_port)
+        rv = self.vapi.papi.hanat_mapper_enable(port=self.mapper_port)
         self.assertEqual(rv.retval, 0)
 
         rv = self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix=prefix,

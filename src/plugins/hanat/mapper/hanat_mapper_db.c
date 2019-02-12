@@ -667,6 +667,28 @@ hanat_mapper_session_walk (hanat_mapper_db_t * db,
   /* *INDENT-ON* */
 }
 
+void
+hanat_mapper_free_ext_addr_pool (hanat_mapper_db_t * db, u32 pool_id)
+{
+  hanat_mapper_session_t *session;
+  hanat_mapper_mapping_t *mapping;
+  u32 *session_to_be_free = 0, *session_index;
+
+  /* *INDENT-OFF* */
+  pool_foreach (session, db->sessions,
+  ({
+    mapping = pool_elt_at_index (db->mappings, session->mapping_index);
+    if (mapping->pool_id == pool_id)
+      vec_add1 (session_to_be_free, session - db->sessions);
+  }));
+  /* *INDENT-ON* */
+  vec_foreach (session_index, session_to_be_free)
+    hanat_mapper_session_free (db,
+			       pool_elt_at_index (db->sessions,
+						  session_index[0]));
+  vec_free (session_to_be_free);
+}
+
 /*
  * fd.io coding-style-patch-verification: ON
  *
