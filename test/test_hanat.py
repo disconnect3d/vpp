@@ -38,6 +38,24 @@ class TestHANAT(VppTestCase):
         bind_layers(UDP, HANAT, dport=cls.mapper_port)
         bind_layers(UDP, HANAT, dport=cls.worker_port)
 
+    def clear_plugins(self):
+        pools = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        for pool in pools:
+            self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(
+                prefix=pool.prefix, pool_id=pool.pool_id, is_add=False)
+
+        mappers = self.vapi.papi.hanat_worker_mapper_dump()
+        for mapper in mappers:
+            self.vapi.papi.hanat_worker_mapper_add_del(
+                is_add=False, pool_id=mapper.pool_id, pool=mapper.pool,
+                src=mapper.src, mapper=mapper.mapper, udp_port=mapper.udp_port)
+
+        interfaces = self.vapi.papi.hanat_worker_interfaces()
+        for interface in interfaces.ifs:
+            self.vapi.papi.hanat_worker_interface_add_del(
+                sw_if_index=interface.sw_if_index, mode=interface.mode,
+                is_add=False)
+
     def configure_plugins(self, prefix='172.16.2.4/30',
                           mapper_pool_id=0, worker_pool_id=None):
 
@@ -265,3 +283,12 @@ class TestHANAT(VppTestCase):
         pkt = pg.get_capture(1)[idx]
 
         return self.swap_and_send(pg, pkt)[0]
+
+    def tearDown(self):
+        super(TestHANAT, self).tearDown()
+        if not self.vpp_dead:
+            self.logger.info(self.vapi.cli("show hanat-mapper sessions"))
+            self.clear_plugins()
+
+if __name__ == '__main__':
+    unittest.main(testRunner=VppTestRunner)
