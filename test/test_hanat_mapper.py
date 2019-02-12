@@ -52,6 +52,39 @@ class HANATStateSync(Packet):
 class TestHANATmapper(VppTestCase):
     """ HA NAT mapper test cases """
 
+    def clear_hanat_mapper(self):
+        pools = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        for pool in pools:
+            self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(
+                prefix=pool.prefix, pool_id=pool.pool_id, is_add=False)
+
+        failovers = self.vapi.papi.hanat_mapper_state_sync_failover_dump()
+        for failover in failovers:
+            self.vapi.papi.hanat_mapper_add_del_state_sync_failover(
+                ip_address=failover.ip_address, port=failover.port,
+                is_add=False)
+
+        static_mappings = self.vapi.papi.hanat_mapper_static_mapping_dump()
+        for static_mapping in static_mappings:
+            self.vapi.papi.hanat_mapper_add_del_static_mapping(
+                local_ip_address=static_mapping.local_ip_address,
+                external_ip_address=static_mapping.external_ip_address,
+                local_port=static_mapping.local_port,
+                external_port=static_mapping.external_port,
+                protocol=static_mapping.protocol,
+                tenant_id=static_mapping.tenant_id,
+                pool_id=static_mapping.pool_id,
+                is_add=False)
+
+        users = self.vapi.papi.hanat_mapper_user_dump()
+        self.assertEqual(len(users), 0)
+        stats = self.statistics.get_counter('/hanat/mapper/total-users')
+        self.assertEqual(stats[0][0], 0)
+        stats = self.statistics.get_counter('/hanat/mapper/total-mappings')
+        self.assertEqual(stats[0][0], 0)
+        stats = self.statistics.get_counter('/hanat/mapper/total-sessions')
+        self.assertEqual(stats[0][0], 0)
+
     @classmethod
     def setUpClass(cls):
         super(TestHANATmapper, cls).setUpClass()
@@ -89,15 +122,6 @@ class TestHANATmapper(VppTestCase):
         self.assertEqual(listener.port, self.local_sync_port)
         self.assertEqual(listener.path_mtu, 512)
 
-        users = self.vapi.hanat_mapper_user_dump()
-        users_before = len(users)
-        stats = self.statistics.get_counter('/hanat/mapper/total-users')
-        usersn = stats[0][0]
-        stats = self.statistics.get_counter('/hanat/mapper/total-mappings')
-        mappingsn = stats[0][0]
-        stats = self.statistics.get_counter('/hanat/mapper/total-sessions')
-        sessionsn = stats[0][0]
-
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
              UDP(sport=self.remote_sync_port, dport=self.local_sync_port) /
@@ -125,11 +149,11 @@ class TestHANATmapper(VppTestCase):
             '/hanat/mapper/state-sync/ack-send')
         self.assertEqual(stats[0][0], 1)
 
-        users = self.vapi.hanat_mapper_user_dump()
-        self.assertEqual(len(users) - users_before, 2)
+        users = self.vapi.papi.hanat_mapper_user_dump()
+        self.assertEqual(len(users), 2)
         for user in users:
-            sessions = self.vapi.hanat_mapper_user_session_dump(user.address,
-                                                                user.tenant_id)
+            sessions = self.vapi.papi.hanat_mapper_user_session_dump(
+                address=user.address, tenant_id=user.tenant_id)
             self.assertEqual(len(sessions), 1)
             self.assertIn(sessions[0].opaque_data, ['AAAA', ''])
 
@@ -138,11 +162,11 @@ class TestHANATmapper(VppTestCase):
         self.assertEqual(stats[0][0], 2)
 
         stats = self.statistics.get_counter('/hanat/mapper/total-users')
-        self.assertEqual(stats[0][0] - usersn, 2)
+        self.assertEqual(stats[0][0], 2)
         stats = self.statistics.get_counter('/hanat/mapper/total-mappings')
-        self.assertEqual(stats[0][0] - mappingsn, 2)
+        self.assertEqual(stats[0][0], 2)
         stats = self.statistics.get_counter('/hanat/mapper/total-sessions')
-        self.assertEqual(stats[0][0] - sessionsn, 2)
+        self.assertEqual(stats[0][0], 2)
 
         p = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
              IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
@@ -162,10 +186,10 @@ class TestHANATmapper(VppTestCase):
         self.assertEqual(p[HANATStateSync].flags, 'ACK')
         self.assertEqual(p[HANATStateSync].version, 1)
 
-        users = self.vapi.hanat_mapper_user_dump()
-        self.assertEqual(len(users) - users_before, 1)
-        sessions = self.vapi.hanat_mapper_user_session_dump(users[0].address,
-                                                            users[0].tenant_id)
+        users = self.vapi.papi.hanat_mapper_user_dump()
+        self.assertEqual(len(users), 1)
+        sessions = self.vapi.papi.hanat_mapper_user_session_dump(
+            address=users[0].address, tenant_id=users[0].tenant_id)
         self.assertEqual(len(sessions), 1)
 
         stats = self.statistics.get_counter(
@@ -175,10 +199,6 @@ class TestHANATmapper(VppTestCase):
         stats = self.statistics.get_counter(
             '/err/hanat-state-sync/pkts-processed')
         self.assertEqual(stats, 2)
-
-        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
-                                                          pool_id=2,
-                                                          is_add=False)
 
     def test_hanat_state_sync_send(self):
         bind_layers(UDP, HANATStateSync, sport=self.local_sync_port)
@@ -311,7 +331,7 @@ class TestHANATmapper(VppTestCase):
 
     def test_hanat_protocol(self):
         session_id = 1
-        self.vapi.hanat_mapper_enable(self.mapper_port)
+        self.vapi.papi.hanat_mapper_enable(port=self.mapper_port)
         self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='10.1.1.1/32',
                                                           pool_id=2,
                                                           is_add=True)
@@ -390,6 +410,7 @@ class TestHANATmapper(VppTestCase):
         super(TestHANATmapper, self).tearDown()
         if not self.vpp_dead:
             self.logger.info(self.vapi.cli("show hanat-mapper sessions"))
+            self.clear_hanat_mapper()
 
 if __name__ == '__main__':
     unittest.main(testRunner=VppTestRunner)
