@@ -674,6 +674,31 @@ static void *vl_api_hanat_mapper_ext_addr_pool_dump_t_print
   FINISH;
 }
 
+static void
+vl_api_hanat_mapper_get_t_handler (vl_api_hanat_mapper_get_t * mp)
+{
+  vl_api_hanat_mapper_get_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  int rv = 0;
+
+  /* *INDENT-OFF* */
+  REPLY_MACRO2 (VL_API_HANAT_MAPPER_GET_REPLY,
+  ({
+    rmp->port = clib_host_to_net_u16 (nm->port);
+  }))
+  /* *INDENT-ON* */
+}
+
+static void *
+vl_api_hanat_mapper_get_t_print (vl_api_hanat_mapper_get_t * mp, void *handle)
+{
+  u8 *s;
+
+  s = format (0, "SCRIPT: hanat_mapper_get ");
+
+  FINISH;
+}
+
 /* List of message types that this plugin understands */
 #define foreach_hanat_mapper_plugin_api_msg                                  \
 _(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                      \
@@ -692,7 +717,8 @@ _(HANAT_MAPPER_STATIC_MAPPING_DUMP, hanat_mapper_static_mapping_dump)        \
 _(HANAT_MAPPER_GET_STATE_SYNC_LISTENER, hanat_mapper_get_state_sync_listener)\
 _(HANAT_MAPPER_STATE_SYNC_FAILOVER_DUMP,                                     \
   hanat_mapper_state_sync_failover_dump)                                     \
-_(HANAT_MAPPER_EXT_ADDR_POOL_DUMP, hanat_mapper_ext_addr_pool_dump)
+_(HANAT_MAPPER_EXT_ADDR_POOL_DUMP, hanat_mapper_ext_addr_pool_dump)          \
+_(HANAT_MAPPER_GET, hanat_mapper_get)
 
 /* Set up the API message handling tables */
 static clib_error_t *
