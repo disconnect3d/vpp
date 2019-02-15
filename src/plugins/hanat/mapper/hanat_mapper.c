@@ -327,7 +327,6 @@ hanat_mapper_set_pool_failover (u32 pool_id, u32 failover_index)
 typedef struct
 {
   u32 pool_id;
-  u32 failover_index;
   u32 thread_index;
 } session_resync_walk_ctx_t;
 
@@ -354,33 +353,39 @@ session_resync_walk (hanat_mapper_session_t * session,
       event.pool_id = clib_host_to_net_u32 (mapping->pool_id);
       event.protocol = mapping->proto;
       event.opaque_len = (u8) vec_len (session->opaque_data);
-      hanat_state_sync_event_add (&event, session->opaque_data, 0,
-				  ctx->failover_index, ctx->thread_index);
+      hanat_state_sync_event_add (&event, session->opaque_data, 0, 0,
+				  ctx->thread_index);
     }
 
   return 0;
 }
 
 int
-hanat_mapper_pool_resync (u32 pool_id)
+hanat_mapper_pool_resync (u32 pool_id, u32 client_index, u32 pid,
+			  hanat_mapper_pool_resync_event_cb_t event_callback)
 {
   hanat_mapper_main_t *nm = &hanat_mapper_main;
   hanat_mapper_addr_pool_t *pool;
+  int rv;
 
+  clib_warning ("resync pool-id %d", pool_id);
   pool = get_pool_by_pool_id (pool_id);
   if (!pool)
     return VNET_API_ERROR_NO_SUCH_ENTRY;
   if (pool->failover_index == ~0)
     return VNET_API_ERROR_UNKNOWN_DESTINATION;
+  rv =
+    hanat_state_sync_resync_init (pool->failover_index, client_index, pid,
+				  event_callback);
+  if (rv)
+    return rv;
 
   session_resync_walk_ctx_t ctx = {
     .pool_id = pool_id,
-    .failover_index = pool->failover_index,
     .thread_index = 0,
   };
   hanat_mapper_session_walk (&nm->db, session_resync_walk, &ctx);
-  // flush
-  hanat_state_sync_event_add (0, 0, 1, pool->failover_index, 0);
+  hanat_state_sync_event_add (0, 0, 1, 0, 0);
   return 0;
 }
 

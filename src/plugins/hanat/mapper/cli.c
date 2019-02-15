@@ -251,10 +251,15 @@ format_session (u8 * s, va_list * args)
 	      format_ip4_address, &session->out_r_addr,
 	      clib_net_to_host_u16 (session->out_r_port),
 	      format_hanat_mapper_protocol, mapping->proto);
-  s = format (s, "%Utotal pkts %llu\n",
-	      format_white_space, indent + 4, session->total_pkts);
-  s = format (s, "%Utotal bytes %llu\n",
-	      format_white_space, indent + 4, session->total_bytes);
+  s =
+    format (s, "%Upool-id %d\n", format_white_space, indent + 4,
+	    mapping->pool_id);
+  s =
+    format (s, "%Utotal pkts %llu\n", format_white_space, indent + 4,
+	    session->total_pkts);
+  s =
+    format (s, "%Utotal bytes %llu\n", format_white_space, indent + 4,
+	    session->total_bytes);
   s =
     format (s, "%Uopaque %U\n", format_white_space, indent + 4,
 	    format_hex_bytes, session->opaque_data,
@@ -342,6 +347,11 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   clib_error_t *error = 0;
   hanat_state_sync_event_t event;
   hanat_mapper_addr_pool_t *pool;
+  hanat_mapper_mapping_t *mapping;
+  hanat_mapper_session_t *session;
+  hanat_mapper_user_t *user;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  f64 now = vlib_time_now (vm);
 
   /* Get a line of input. */
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -410,6 +420,76 @@ hanat_mapper_add_session_command_fn (vlib_main_t * vm,
   event.flags = 0;
   event.event_type = is_add ? HANAT_STATE_SYNC_ADD : HANAT_STATE_SYNC_DEL;
   event.opaque_len = (u8) vec_len (opaque);
+
+  if (is_add)
+    {
+      mapping =
+	hanat_mapper_mapping_get (&nm->db, &in_l_addr, event.in_l_port, proto,
+				  tenant_id, 1);
+      if (!mapping)
+	{
+	  if (hanat_mapper_set_out_addr_and_port
+	      (pool_id, proto, &out_l_addr, event.out_l_port))
+	    {
+	      error =
+		clib_error_return (0,
+				   "port %d already in use addr %U pool-id %d",
+				   out_l_port, format_ip4_address,
+				   &out_l_addr, pool_id);
+	      goto done;
+	    }
+	  mapping = hanat_mapper_mapping_create (&nm->db, &in_l_addr,
+						 event.in_l_port,
+						 &out_l_addr,
+						 event.out_l_port, proto,
+						 pool_id, tenant_id, 0);
+	  if (!mapping)
+	    {
+	      hanat_mapper_free_out_addr_and_port (pool_id, proto,
+						   &out_l_addr,
+						   event.out_l_port);
+	      error = clib_error_return (0, "creating mapping failed");
+	      goto done;
+	    }
+
+	  user = hanat_mapper_user_get (&nm->db, &in_l_addr, tenant_id);
+	  if (!user)
+	    {
+	      user =
+		hanat_mapper_user_create (&nm->db, &in_l_addr, tenant_id);
+	      if (!user)
+		{
+		  error = clib_error_return (0, "creating user failed");
+		  goto done;
+		}
+	    }
+
+	  session = hanat_mapper_session_create (&nm->db, mapping,
+						 &in_r_addr, event.in_r_port,
+						 &out_r_addr,
+						 event.out_r_port, user, now,
+						 opaque, vec_len (opaque));
+	  if (!session)
+	    {
+	      error = clib_error_return (0, "creating session failed");
+	      goto done;
+	    }
+	}
+    }
+  else
+    {
+      session =
+	hanat_mapper_session_get (&nm->db, &in_l_addr, event.in_l_port,
+				  &in_r_addr, event.in_r_port, proto,
+				  tenant_id, 1);
+      if (!session)
+	{
+	  error = clib_error_return (0, "delete: session not found");
+	  goto done;
+	}
+
+      hanat_mapper_session_free (&nm->db, session);
+    }
   hanat_state_sync_event_add (&event, opaque, 0, pool->failover_index,
 			      vm->thread_index);
 
