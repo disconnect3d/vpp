@@ -25,6 +25,8 @@ class TestHANAT(VppTestCase):
             cls.mapper_port = 1234
             cls.worker_port = 4321
             cls.pool_id = 1
+            cls.tcp_port_in = 6303
+            cls.tcp_external_port = 80
 
             for i in cls.interfaces:
                 i.admin_up()
@@ -55,6 +57,18 @@ class TestHANAT(VppTestCase):
             self.vapi.papi.hanat_worker_interface_add_del(
                 sw_if_index=interface.sw_if_index, mode=interface.mode,
                 is_add=False)
+
+    def simulate_hanat_proto(self):
+
+        # HANAT Session Request packet
+        # forward packet from worker to mapper
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
+
+        # HANAT Session Binding packet
+        # forward packet from mapper to worker
+        pkt = self.capture_swap_and_send(self.pg2)
+        self.logger.error(pkt.show2())
 
     def configure_plugins(self, prefix='172.16.2.4/30',
                           mapper_pool_id=0, worker_pool_id=None):
@@ -163,7 +177,7 @@ class TestHANAT(VppTestCase):
         pkts = list()
         for sport, dport in ((9000, 90), (8000, 80)):
             pkts.append(
-                Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
+                Ether(src=self.pg0.remote_mac, dst=self.pg0.local_mac) /
                 IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
                 TCP(sport=sport, dport=dport))
         self.pg0.add_stream(pkts)
@@ -283,6 +297,70 @@ class TestHANAT(VppTestCase):
         pkt = pg.get_capture(1)[idx]
 
         return self.swap_and_send(pg, pkt)[0]
+
+    def test_mss_clamping(self):
+        """ TCP MSS clamping """
+
+        self.configure_plugins()
+
+        p = (Ether(src=self.pg0.remote_mac, dst=self.pg0.local_mac) /
+             IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
+             TCP(sport=self.tcp_port_in, dport=self.tcp_external_port,
+                 flags="S", options=[('MSS', 1400)]))
+
+        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1000,
+                                                          enable=1)
+        self.assertEqual(rv.retval, 0)
+
+        self.pg0.add_stream(p)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+
+        # session is already cached no more communication required beteween
+        # mapper and worker after this one
+        self.simulate_hanat_proto()
+
+        capture = self.pg1.get_capture(1)
+        # Negotiated MSS value greater than configured - changed
+        self.verify_mss_value(capture[0], 1000)
+
+        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1500,
+                                                          enable=0)
+        self.assertEqual(rv.retval, 0)
+
+        self.pg0.add_stream(p)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+        capture = self.pg1.get_capture(1)
+        # MSS clamping disabled - negotiated MSS unchanged
+        self.verify_mss_value(capture[0], 1400)
+
+        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1500,
+                                                          enable=1)
+        self.assertEqual(rv.retval, 0)
+
+        self.pg0.add_stream(p)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+        capture = self.pg1.get_capture(1)
+        # Negotiated MSS value smaller than configured - unchanged
+        self.verify_mss_value(capture[0], 1400)
+
+    def verify_mss_value(self, pkt, mss):
+        """
+        Verify TCP MSS value
+
+        :param pkt:
+        :param mss:
+        """
+        if not pkt.haslayer(IP) or not pkt.haslayer(TCP):
+            raise TypeError("Not a TCP/IP packet")
+
+        for option in pkt[TCP].options:
+            if option[0] == 'MSS':
+                self.assertEqual(option[1], mss)
+                self.assert_tcp_checksum_valid(pkt)
+
 
     def tearDown(self):
         super(TestHANAT, self).tearDown()

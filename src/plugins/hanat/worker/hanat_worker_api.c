@@ -61,6 +61,24 @@ vl_api_hanat_worker_enable_t_handler (vl_api_hanat_worker_enable_t * mp)
 }
 
 static void
+vl_api_hanat_worker_set_mss_clamping_t_handler (vl_api_hanat_worker_set_mss_clamping_t * mp)
+{
+  hanat_worker_main_t *hm = &hanat_worker_main;
+  vl_api_hanat_worker_set_mss_clamping_reply_t *rmp;
+  int rv = 0;
+
+  if (mp->enable)
+    {
+      hm->mss_clamping = ntohs (mp->mss_value);
+      hm->mss_value_net = mp->mss_value;
+    }
+  else
+    hm->mss_clamping = 0;
+
+  REPLY_MACRO (VL_API_HANAT_WORKER_SET_MSS_CLAMPING_REPLY);
+}
+
+static void
   vl_api_hanat_worker_interface_add_del_t_handler
   (vl_api_hanat_worker_interface_add_del_t * mp)
 {
@@ -284,6 +302,7 @@ vl_api_hanat_worker_cache_dump_t_handler (vl_api_hanat_worker_cache_dump_t *mp)
 /* List of message types that this plugin understands */
 #define foreach_hanat_worker_plugin_api_msg				\
 _(HANAT_WORKER_ENABLE, hanat_worker_enable)				\
+_(HANAT_WORKER_SET_MSS_CLAMPING, hanat_worker_set_mss_clamping)         \
 _(HANAT_WORKER_INTERFACE_ADD_DEL, hanat_worker_interface_add_del)	\
 _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\

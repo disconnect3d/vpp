@@ -45,6 +45,8 @@ hanat_worker_init (vlib_main_t * vm)
   node = vlib_get_node_by_name (vm, (u8 *) "hanat-gre4-input");
   hm->hanat_gre4_input_node_index = node->index;
 
+  hm->mss_clamping = 0;
+
   hanat_mapper_table_init(&hm->pool_db);
   hm->pool_db.n_buckets = 0;
 
