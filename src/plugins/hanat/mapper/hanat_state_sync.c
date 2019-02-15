@@ -15,7 +15,6 @@
 
 #include "hanat_state_sync.h"
 #include "hanat_mapper_db.h"
-#include "hanat_mapper.h"
 #include <vnet/udp/udp.h>
 
 #define HANAT_STATE_SYNC_RETRIES 3
@@ -45,6 +44,7 @@ typedef struct
   u32 seq;
   u32 retry_count;
   f64 retry_timer;
+  u8 is_resync;
   u8 *data;
 } hanat_state_sync_resend_entry_t;
 
@@ -68,13 +68,38 @@ typedef struct hanat_state_sync_main_s
   hanat_state_sync_failover_t *failovers;
   u32 sequence_number;
   hanat_state_sync_resend_entry_t *resend_queue;
+  u8 in_resync;
+  u32 resync_ack_count;
+  u32 resync_ack_missed;
+  hanat_mapper_pool_resync_event_cb_t event_callback;
+  u32 client_index;
+  u32 pid;
 } hanat_state_sync_main_t;
 
 hanat_state_sync_main_t hanat_state_sync_main;
 vlib_node_registration_t hanat_state_sync_process_node;
 
+static void
+hanat_state_sync_resync_fin (void)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+
+  if (sm->resync_ack_count)
+    return;
+
+  sm->in_resync = 0;
+  clib_warning ("resync completed with result %s",
+		sm->resync_ack_missed ? "FAILED" : "SUCESS");
+  if (sm->event_callback)
+    sm->event_callback (sm->client_index, sm->pid,
+			sm->resync_ack_missed ?
+			HANAT_MAPPER_POOL_RESYNC_RESULT_FAILED :
+			HANAT_MAPPER_POOL_RESYNC_RESULT_SUCESS);
+}
+
 int
-hanat_state_sync_resend_queue_add (u32 seq, u8 * data, u8 data_len)
+hanat_state_sync_resend_queue_add (u32 seq, u8 * data, u8 data_len,
+				   u8 is_resync)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
   hanat_state_sync_resend_entry_t *entry;
@@ -84,6 +109,7 @@ hanat_state_sync_resend_queue_add (u32 seq, u8 * data, u8 data_len)
   clib_memset (entry, 0, sizeof (*entry));
   entry->retry_timer = now + 2.0;
   entry->seq = seq;
+  entry->is_resync = is_resync;
   vec_add (entry->data, data, data_len);
 
   return 0;
@@ -103,6 +129,11 @@ hanat_state_sync_ack_recv (u32 seq)
     vlib_increment_simple_counter (&sm->counters
 				   [HANAT_STATE_SYNC_COUNTER_RECV_ACK], 0, 0,
 				   1);
+    if (sm->resend_queue[i].is_resync)
+      {
+	sm->resync_ack_count--;
+	hanat_state_sync_resync_fin ();
+      }
     vec_free (sm->resend_queue[i].data);
     vec_del1 (sm->resend_queue, i);
     clib_warning ("ACK for seq %d received", clib_net_to_host_u32 (seq));
@@ -140,6 +171,12 @@ hanat_state_sync_resend_scan (f64 now)
       {
 	clib_warning ("state sync seq %d missed",
 		      clib_net_to_host_u32 (sm->resend_queue[i].seq));
+	if (sm->resend_queue[i].is_resync)
+	  {
+	    sm->resync_ack_missed++;
+	    sm->resync_ack_count--;
+	    hanat_state_sync_resync_fin ();
+	  }
 	vec_add1 (to_delete, i);
 	vlib_increment_simple_counter (&sm->counters
 				       [HANAT_STATE_SYNC_COUNTER_MISSED_COUNT],
@@ -187,9 +224,13 @@ void
 hanat_state_sync_init (vlib_main_t * vm)
 {
   hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  hanat_state_sync_failover_t *failover;
 
   sm->src_ip_address.as_u32 = 0;
   sm->src_port = 0;
+  sm->in_resync = 0;
+  sm->resync_ack_count = 0;
+  sm->resync_ack_missed = 0;
 
 #define _(N, s, v) sm->counters[v].name = s;                         \
   sm->counters[v].stat_segment_name = "/hanat/mapper/state-sync/" s; \
@@ -198,6 +239,10 @@ hanat_state_sync_init (vlib_main_t * vm)
   foreach_hanat_state_sync_counter
 #undef _
     sm->vlib_main = vm;
+
+  // index 0 reserved for resync
+  pool_get (sm->failovers, failover);
+  clib_memset (failover, 0, sizeof (*failover));
 }
 
 int
@@ -238,8 +283,11 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
   ({
     if (f->ip_address.as_u32 == addr->as_u32 && f->port == port)
       {
-        failover = f;
-        break;
+        if ((f - sm->failovers) != 0)
+          {
+            failover = f;
+            break;
+          }
       }
   }));
   /* *INDENT-ON* */
@@ -254,7 +302,7 @@ hanat_state_sync_add_del_failover (ip4_address_t * addr, u16 port,
 	  return 0;
 	}
 
-      if (!pool_elts (sm->failovers))
+      if (pool_elts (sm->failovers) < 2)
 	vlib_process_signal_event (sm->vlib_main,
 				   hanat_state_sync_process_node.index, 1, 0);
 
@@ -293,8 +341,11 @@ hanat_state_sync_failover_walk (hanat_state_sync_failover_walk_fn_t fn,
   /* *INDENT-OFF* */
   pool_foreach (f, sm->failovers,
   ({
-    if (fn (&f->ip_address, f->port, f - sm->failovers, ctx))
-      return;
+    if ((f - sm->failovers) != 0)
+      {
+        if (fn (&f->ip_address, f->port, f - sm->failovers, ctx))
+          return;
+      }
   }));
   /* *INDENT-ON* */
 }
@@ -507,7 +558,7 @@ hanat_state_sync_send (vlib_frame_t * f, vlib_buffer_t * b,
   udp->length = clib_host_to_net_u16 (b->current_length - sizeof (*ip));
 
   hanat_state_sync_resend_queue_add (h->sequence_number, (u8 *) ip,
-				     b->current_length);
+				     b->current_length, !failover_index);
 
   vlib_put_frame_to_node (vm, ip4_lookup_node.index, f);
 }
@@ -610,6 +661,11 @@ hanat_state_sync_event_add (hanat_state_sync_event_t * event,
       failover->state_sync_frame = 0;
       failover->state_sync_count = 0;
       offset = 0;
+      if (!failover_index)
+	{
+	  sm->resync_ack_count++;
+	  hanat_state_sync_resync_fin ();
+	}
     }
 
   failover->state_sync_next_event_offset = offset;
@@ -624,7 +680,8 @@ hanat_state_sync_flush (vlib_main_t * vm)
   /* *INDENT-OFF* */
   pool_foreach_index (i, sm->failovers,
   ({
-    hanat_state_sync_event_add (0, 0, 1, i, vm->thread_index);
+    if (i != 0)
+      hanat_state_sync_event_add (0, 0, 1, i, vm->thread_index);
   }));
   /* *INDENT-ON* */
 }
@@ -661,6 +718,32 @@ VLIB_REGISTER_NODE (hanat_state_sync_process_node) = {
     .name = "hanat-state-sync-process",
 };
 /* *INDENT-ON* */
+
+int
+hanat_state_sync_resync_init (u32 failover_index, u32 client_index, u32 pid,
+			      hanat_mapper_pool_resync_event_cb_t
+			      event_callback)
+{
+  hanat_state_sync_main_t *sm = &hanat_state_sync_main;
+  hanat_state_sync_failover_t *failover, *failover0;
+
+  if (sm->in_resync)
+    return VNET_API_ERROR_IN_PROGRESS;
+
+  failover = pool_elt_at_index (sm->failovers, failover_index);
+  failover0 = pool_elt_at_index (sm->failovers, 0);
+
+  sm->in_resync = 1;
+  sm->resync_ack_count = 0;
+  sm->resync_ack_missed = 0;
+  sm->event_callback = event_callback;
+  sm->client_index = client_index;
+  sm->pid = pid;
+  failover0->ip_address = failover->ip_address;
+  failover0->port = failover->port;
+
+  return 0;
+}
 
 /*
  * fd.io coding-style-patch-verification: ON

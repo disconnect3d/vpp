@@ -699,6 +699,61 @@ vl_api_hanat_mapper_get_t_print (vl_api_hanat_mapper_get_t * mp, void *handle)
   FINISH;
 }
 
+static void
+hanat_mapper_pool_resync_event_cb (u32 client_index, u32 pid,
+				   vl_api_hanat_mapper_pool_resync_result_t
+				   result)
+{
+  vl_api_registration_t *reg;
+  vl_api_hanat_mapper_pool_resync_event_t *mp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+
+  reg = vl_api_client_index_to_registration (client_index);
+  if (!reg)
+    return;
+
+  mp = vl_msg_api_alloc (sizeof (*mp));
+  clib_memset (mp, 0, sizeof (*mp));
+  mp->client_index = client_index;
+  mp->pid = pid;
+  mp->result = clib_host_to_net_u32 (result);
+  mp->_vl_msg_id =
+    ntohs (VL_API_HANAT_MAPPER_POOL_RESYNC_EVENT + nm->msg_id_base);
+
+  vl_api_send_msg (reg, (u8 *) mp);
+}
+
+static void
+vl_api_hanat_mapper_pool_resync_t_handler (vl_api_hanat_mapper_pool_resync_t *
+					   mp)
+{
+  vl_api_hanat_mapper_pool_resync_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  int rv;
+
+  rv =
+    hanat_mapper_pool_resync (clib_net_to_host_u32 (mp->pool_id),
+			      mp->client_index, mp->pid,
+			      mp->want_resync_event ?
+			      hanat_mapper_pool_resync_event_cb : NULL);
+
+  REPLY_MACRO (VL_API_HANAT_MAPPER_POOL_RESYNC_REPLY);
+}
+
+static void *
+vl_api_hanat_mapper_pool_resync_t_print (vl_api_hanat_mapper_pool_resync_t *
+					 mp, void *handle)
+{
+  u8 *s;
+
+  s = format (0, "SCRIPT: hanat_mapper_pool_resync ");
+  s = format (s, "pool_id %d want_resync_event %d pid %d",
+	      clib_host_to_net_u32 (mp->pool_id), mp->want_resync_event,
+	      clib_host_to_net_u32 (mp->pid));
+
+  FINISH;
+}
+
 /* List of message types that this plugin understands */
 #define foreach_hanat_mapper_plugin_api_msg                                  \
 _(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                      \
@@ -718,7 +773,8 @@ _(HANAT_MAPPER_GET_STATE_SYNC_LISTENER, hanat_mapper_get_state_sync_listener)\
 _(HANAT_MAPPER_STATE_SYNC_FAILOVER_DUMP,                                     \
   hanat_mapper_state_sync_failover_dump)                                     \
 _(HANAT_MAPPER_EXT_ADDR_POOL_DUMP, hanat_mapper_ext_addr_pool_dump)          \
-_(HANAT_MAPPER_GET, hanat_mapper_get)
+_(HANAT_MAPPER_GET, hanat_mapper_get)                                        \
+_(HANAT_MAPPER_POOL_RESYNC, hanat_mapper_pool_resync)
 
 /* Set up the API message handling tables */
 static clib_error_t *

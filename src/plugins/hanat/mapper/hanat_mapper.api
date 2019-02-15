@@ -221,6 +221,29 @@ define hanat_mapper_get_reply
   u16 port;
 };
 
+enum hanat_mapper_pool_resync_result {
+  HANAT_MAPPER_POOL_RESYNC_RESULT_SUCESS,
+  HANAT_MAPPER_POOL_RESYNC_RESULT_FAILED,
+};
+autoreply define hanat_mapper_pool_resync
+{
+  u32 client_index;
+  u32 context;
+  u32 pool_id;
+  u8 want_resync_event;
+  u32 pid;
+};
+define hanat_mapper_pool_resync_event
+{
+  u32 client_index;
+  u32 pid;
+  vl_api_hanat_mapper_pool_resync_result_t result;
+};
+service {
+  rpc hanat_mapper_pool_resync returns hanat_mapper_pool_resync_reply
+    events hanat_mapper_pool_resync_event;
+};
+
 /*
  * Local Variables:
  * eval: (c-set-style "gnu")

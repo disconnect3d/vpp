@@ -22,6 +22,10 @@
 #include <vlibapi/api.h>
 #include "hanat_mapper_db.h"
 
+#define vl_typedefs
+#include "hanat_mapper_all_api_h.h"
+#undef vl_typedefs
+
 /* default session timeouts */
 #define HANAT_MAPPER_UDP_TIMEOUT 300
 #define HANAT_MAPPER_TCP_TRANSITORY_TIMEOUT 240
@@ -50,6 +54,11 @@ typedef struct
     foreach_hanat_mapper_protocol
 #undef _
 } hanat_mapper_address_t;
+
+typedef void (*hanat_mapper_pool_resync_event_cb_t) (u32 client_index,
+						     u32 pid,
+						     vl_api_hanat_mapper_pool_resync_result_t
+						     result);
 
 typedef struct
 {
@@ -128,6 +137,10 @@ int hanat_mapper_set_out_addr_and_port (u32 pool_id,
 void hanat_mapper_free_out_addr_and_port (u32 pool_id,
 					  hanat_mapper_protocol_t proto,
 					  ip4_address_t * addr, u16 port);
+
+int hanat_mapper_pool_resync (u32 pool_id, u32 client_index, u32 pid,
+			      hanat_mapper_pool_resync_event_cb_t
+			      event_callback);
 
 format_function_t format_hanat_mapper_protocol;
 

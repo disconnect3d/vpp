@@ -9,6 +9,8 @@ from scapy.all import *
 from util import ppp
 from hanat import *
 from time import sleep
+import os
+from vpp_papi import VppEnum
 
 
 class Event(Packet):
@@ -50,6 +52,7 @@ class HANATStateSync(Packet):
 
 
 class TestHANATmapper(VppTestCase):
+
     """ HA NAT mapper test cases """
 
     def clear_hanat_mapper(self):
@@ -100,6 +103,9 @@ class TestHANATmapper(VppTestCase):
                 i.admin_up()
                 i.config_ip4()
                 i.resolve_arp()
+
+            cls.pg0.generate_remote_hosts(2)
+            cls.pg0.configure_ipv4_neighbors()
 
         except Exception:
             super(TestHANATmapper, cls).tearDownClass()
@@ -283,7 +289,7 @@ class TestHANATmapper(VppTestCase):
             '/hanat/mapper/state-sync/add-event-send')
         self.assertEqual(stats[0][0], 2)
         stats = self.statistics.get_counter(
-             '/hanat/mapper/state-sync/ack-recv')
+            '/hanat/mapper/state-sync/ack-recv')
         self.assertEqual(stats[0][0], 1)
 
         self.pg_enable_capture(self.pg_interfaces)
@@ -316,11 +322,6 @@ class TestHANATmapper(VppTestCase):
         pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
         self.assertEqual(len(pool), 1)
         self.assertEqual(pool[0].failover_index, 0xFFFFFFFF)
-        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
-                                                          pool_id=2,
-                                                          is_add=False)
-        pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
-        self.assertEqual(len(pool), 0)
 
         rv = self.vapi.papi.hanat_mapper_add_del_state_sync_failover(
             ip_address=self.pg0.remote_ip4,
@@ -328,6 +329,48 @@ class TestHANATmapper(VppTestCase):
             is_add=False)
         failover = self.vapi.papi.hanat_mapper_state_sync_failover_dump()
         self.assertEqual(len(failover), 0)
+
+        # resync
+        self.pg_enable_capture(self.pg_interfaces)
+        rv = self.vapi.papi.hanat_mapper_add_del_state_sync_failover(
+            ip_address=self.pg0.remote_hosts[1].ip4,
+            port=(self.remote_sync_port + 1),
+            is_add=True)
+        self.vapi.papi.hanat_mapper_set_pool_failover(
+            pool_id=2, failover_index=rv.failover_index)
+        rv = self.vapi.papi.hanat_mapper_pool_resync(
+            pool_id=2, want_resync_event=1, pid=os.getpid())
+        self.assertEqual(rv.retval, 0)
+
+        capture = self.pg0.get_capture(1)
+        self.vapi.collect_events()
+        p = capture[0]
+        self.assert_packet_checksums_valid(p)
+        self.assertEqual(p[IP].src, self.pg0.local_ip4)
+        self.assertEqual(p[IP].dst, self.pg0.remote_hosts[1].ip4)
+        self.assertEqual(p[UDP].sport, self.local_sync_port)
+        self.assertEqual(p[UDP].dport, self.remote_sync_port + 1)
+        self.assertEqual(p[HANATStateSync].version, 1)
+        self.assertEqual(p[HANATStateSync].count, 1)
+        seq = p[HANATStateSync].sequence_number
+
+        ack = (Ether(dst=self.pg0.local_mac, src=self.pg0.remote_mac) /
+               IP(src=self.pg0.remote_ip4, dst=self.pg0.local_ip4) /
+               UDP(sport=self.remote_sync_port, dport=self.local_sync_port) /
+               HANATStateSync(sequence_number=seq, flags='ACK'))
+        self.pg0.add_stream(ack)
+        self.pg_start()
+
+        ev = self.vapi.wait_for_event(1, "hanat_mapper_pool_resync_event")
+        e = VppEnum.vl_api_hanat_mapper_pool_resync_result_t
+        self.assert_equal(ev.result,
+                          e.HANAT_MAPPER_POOL_RESYNC_RESULT_SUCESS)
+
+        self.vapi.papi.hanat_mapper_add_del_ext_addr_pool(prefix='2.3.4.0/28',
+                                                          pool_id=2,
+                                                          is_add=False)
+        pool = self.vapi.papi.hanat_mapper_ext_addr_pool_dump()
+        self.assertEqual(len(pool), 0)
 
     def test_hanat_protocol(self):
         session_id = 1

@@ -17,10 +17,12 @@
 
 #include <vnet/vnet.h>
 #include <vnet/ip/ip.h>
+#include "hanat_mapper.h"
 
 #define HANAT_STATE_SYNC_VERSION 0x01
 
 #define HANAT_STATE_SYNC_FLAG_ACK 0x01
+#define HANAT_STATE_SYNC_FLAG_RESYNC 0x02
 
 typedef struct
 {
@@ -87,6 +89,11 @@ void hanat_state_sync_flush (vlib_main_t * vm);
 void hanat_state_sync_ack_recv (u32 seq);
 
 void hanat_state_sync_ack_send_increment_counter (u32 thread_index);
+
+int hanat_state_sync_resync_init (u32 failover_index, u32 client_index,
+				  u32 pid,
+				  hanat_mapper_pool_resync_event_cb_t
+				  event_callback);
 
 #endif /* __included_hanat_state_sync_h__ */
 
