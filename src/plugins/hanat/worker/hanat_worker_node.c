@@ -129,8 +129,56 @@ format_hanat_worker_trace (u8 * s, va_list * args)
   return format (s, "HANAT WORKER: %U", format_hanat_session_key, &t->session.key);
 }
 
+always_inline void
+mss_clamping (hanat_worker_main_t *hm, tcp_header_t * tcp, ip_csum_t * sum)
+{
+  u8 *data;
+  u8 opt_len, opts_len, kind;
+  u16 mss;
+
+  if (!(hm->mss_clamping && tcp_syn (tcp)))
+    return;
+
+  opts_len = (tcp_doff (tcp) << 2) - sizeof (tcp_header_t);
+  data = (u8 *) (tcp + 1);
+  for (; opts_len > 0; opts_len -= opt_len, data += opt_len)
+    {
+      kind = data[0];
+
+      if (kind == TCP_OPTION_EOL)
+	break;
+      else if (kind == TCP_OPTION_NOOP)
+	{
+	  opt_len = 1;
+	  continue;
+	}
+      else
+	{
+	  if (opts_len < 2)
+	    return;
+	  opt_len = data[1];
+
+	  if (opt_len < 2 || opt_len > opts_len)
+	    return;
+	}
+
+      if (kind == TCP_OPTION_MSS)
+	{
+	  mss = *(u16 *) (data + 2);
+	  if (clib_net_to_host_u16 (mss) > hm->mss_clamping)
+	    {
+	      *sum =
+		ip_csum_update (*sum, mss, hm->mss_value_net, ip4_header_t,
+				length);
+	      clib_memcpy_fast (data + 2, &hm->mss_value_net, 2);
+	    }
+	  return;
+	}
+    }
+}
+
 static bool
-transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
+transform_packet (hanat_worker_main_t *hm, hanat_session_entry_t *s, ip4_header_t *ip)
 {
   ip_csum_t l4csum;
 
@@ -155,6 +203,7 @@ transform_packet (hanat_session_entry_t *s, ip4_header_t *ip)
       tcp->src_port = s->post_sp;
     l4csum = tcp->checksum;
     l4csum = ip_csum_sub_even(l4csum, s->l4_checksum);
+    mss_clamping (hm, tcp, &l4csum);
     tcp->checksum = ip_csum_fold(l4csum);
 
   } else if (ip->protocol == IP_PROTOCOL_UDP) {
@@ -269,7 +318,7 @@ hanat_nat44_transform (hanat_db_t *db, u32 fib_index, ip4_header_t *ip, f64 now,
   *out_fib_index = s->entry.fib_index;
   s->entry.last_heard = now;
   *session = s;
-  return transform_packet(&s->entry, ip);
+  return transform_packet(hm, &s->entry, ip);
 }
 
 static void
