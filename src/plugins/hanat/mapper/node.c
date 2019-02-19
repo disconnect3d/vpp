@@ -427,6 +427,12 @@ hanat_session_request_process (vlib_main_t * vm,
       rsp->sa = mapping->out_addr;
       rsp->da = session->out_r_addr;
 
+      if (nm->mss_value)
+        {
+          instructions |= HANAT_INSTR_TCP_MSS;
+          rsp->mss_value = nm->mss_value;
+        }
+
       if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
 	{
 	  rsp->sp = mapping->out_port;
@@ -443,6 +449,12 @@ hanat_session_request_process (vlib_main_t * vm,
 	HANAT_INSTR_DESTINATION_PORT;
       rsp->sa = session->in_r_addr;
       rsp->da = mapping->in_addr;
+
+      if (nm->mss_value)
+        {
+          instructions |= HANAT_INSTR_TCP_MSS;
+          rsp->mss_value = nm->mss_value;
+        }
 
       if (PREDICT_TRUE (protocol != HANAT_MAPPER_PROTOCOL_ICMP))
 	{

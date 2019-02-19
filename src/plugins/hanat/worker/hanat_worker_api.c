@@ -256,7 +256,7 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   rmp->post_sp = s->entry.post_sp;
   rmp->post_dp = s->entry.post_dp;
   memcpy(&rmp->gre, &s->entry.gre, 4);
-  rmp->tcp_mss = htons(s->entry.tcp_mss);
+  rmp->tcp_mss = htons(s->entry.tcp_mss_value);
   rmp->cached_buffer = htonl(s->entry.buffer);
   rmp->flags = htonl(s->entry.flags);
   rmp->last_heard = (f64)clib_net_to_host_u64(s->entry.last_heard);

@@ -236,7 +236,7 @@ hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session
 static void
 hanat_worker_cache_update(hanat_session_t *s, f64 now, hanat_instructions_t instructions,
 			  u32 fib_index, ip4_address_t *sa, ip4_address_t *da,
-			  u16 sport, u16 dport, ip4_address_t gre)
+			  u16 sport, u16 dport, ip4_address_t gre, u16 tcp_mss_value)
 {
   /* Update session entry */
   hanat_session_key_t *key = &s->key;
@@ -248,6 +248,8 @@ hanat_worker_cache_update(hanat_session_t *s, f64 now, hanat_instructions_t inst
   memcpy(&entry->post_da, &da->as_u32, 4);
   entry->post_sp = sport; /* Network byte order */
   entry->post_dp = dport; /* Network byte order */
+  entry->tcp_mss_value = ntohs (tcp_mss_value);
+  entry->tcp_mss_value_net = tcp_mss_value;
 
   if (gre.as_u32)
     entry->gre = gre;
@@ -516,7 +518,7 @@ hanat_protocol_input (vlib_main_t * vm,
 		if (tl->l == sizeof(hanat_option_session_binding_t) + 4)
 		  memcpy(&gre, sp->opaque_data, 4);
 		hanat_worker_cache_update(s, now, ntohl(sp->instructions), ntohl(sp->fib_index),
-					  &sp->sa, &sp->da, sp->sp, sp->dp, gre);
+					  &sp->sa, &sp->da, sp->sp, sp->dp, gre, sp->mss_value);
 
 		/* Put cached packet back to fast worker node */
 		if (s->entry.buffer) {

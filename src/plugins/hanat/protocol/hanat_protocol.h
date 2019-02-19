@@ -94,6 +94,7 @@ typedef struct {
   ip4_address_t da;
   u16 sp;
   u16 dp;
+  u16 mss_value;
   u8 opaque_data[0];
 }  __attribute__((packed)) hanat_option_session_binding_t;
 

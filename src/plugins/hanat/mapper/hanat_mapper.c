@@ -199,6 +199,8 @@ hanat_mapper_init (vlib_main_t * vm)
   nm->alloc_addr_and_port = hanat_mapper_alloc_out_addr_and_port_default;
   nm->random_seed = random_default_seed ();
 
+  nm->mss_value = 0;
+
   nm->vlib_main = vm;
   nm->vnet_main = vnet_get_main ();
   nm->api_main = &api_main;

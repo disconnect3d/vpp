@@ -68,7 +68,65 @@ vl_api_hanat_mapper_control_ping_t_print (vl_api_hanat_mapper_control_ping_t *
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: hanat_mapper_control_ping ");
+  s = format (0, "script: hanat_mapper_control_ping ");
+
+  FINISH;
+}
+
+static void
+vl_api_hanat_mapper_set_mss_clamping_t_handler (vl_api_hanat_mapper_set_mss_clamping_t * mp)
+{
+  vl_api_hanat_mapper_set_mss_clamping_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  int rv = 0;
+
+  nm->mss_value = mp->enable ? mp->mss_value : 0;
+
+  REPLY_MACRO (VL_API_HANAT_MAPPER_SET_MSS_CLAMPING_REPLY);
+}
+
+static void *
+vl_api_hanat_mapper_set_mss_clamping_t_print (vl_api_hanat_mapper_set_mss_clamping_t *
+					  mp, void *handle)
+{
+  u8 *s;
+
+  if (mp->enable)
+    {
+      s = format(0, "SCRIPT: hanat_mapper_set_mss_clamping enable, value: %d",
+                 clib_net_to_host_u16 (mp->mss_value));
+    }
+  else
+    {
+      s = format(0, "SCRIPT: hanat_mapper_set_mss_clamping disable");
+    }
+
+  FINISH;
+}
+
+static void
+vl_api_hanat_mapper_get_mss_clamping_t_handler (vl_api_hanat_mapper_get_mss_clamping_t * mp)
+{
+  vl_api_hanat_mapper_get_mss_clamping_reply_t *rmp;
+  hanat_mapper_main_t *nm = &hanat_mapper_main;
+  int rv = 0;
+
+  /* *INDENT-OFF* */
+  REPLY_MACRO2 (VL_API_HANAT_MAPPER_GET_MSS_CLAMPING_REPLY,
+  ({
+    rmp->enable = nm->mss_value ? 1 : 0;
+    rmp->mss_value = nm->mss_value;
+  }))
+  /* *INDENT-ON* */
+}
+
+static void *
+vl_api_hanat_mapper_get_mss_clamping_t_print (vl_api_hanat_mapper_get_mss_clamping_t * mp,
+				     void *handle)
+{
+  u8 *s;
+
+  s = format (0, "SCRIPT: hanat_mapper_get_mss_clamping");
 
   FINISH;
 }
@@ -757,6 +815,8 @@ vl_api_hanat_mapper_pool_resync_t_print (vl_api_hanat_mapper_pool_resync_t *
 /* List of message types that this plugin understands */
 #define foreach_hanat_mapper_plugin_api_msg                                  \
 _(HANAT_MAPPER_CONTROL_PING, hanat_mapper_control_ping)                      \
+_(HANAT_MAPPER_SET_MSS_CLAMPING, hanat_mapper_set_mss_clamping)              \
+_(HANAT_MAPPER_GET_MSS_CLAMPING, hanat_mapper_get_mss_clamping)              \
 _(HANAT_MAPPER_ENABLE, hanat_mapper_enable)                                  \
 _(HANAT_MAPPER_ADD_DEL_EXT_ADDR_POOL, hanat_mapper_add_del_ext_addr_pool)    \
 _(HANAT_MAPPER_SET_TIMEOUTS, hanat_mapper_set_timeouts)                      \
