@@ -61,24 +61,6 @@ vl_api_hanat_worker_enable_t_handler (vl_api_hanat_worker_enable_t * mp)
 }
 
 static void
-vl_api_hanat_worker_set_mss_clamping_t_handler (vl_api_hanat_worker_set_mss_clamping_t * mp)
-{
-  hanat_worker_main_t *hm = &hanat_worker_main;
-  vl_api_hanat_worker_set_mss_clamping_reply_t *rmp;
-  int rv = 0;
-
-  if (mp->enable)
-    {
-      hm->mss_clamping = ntohs (mp->mss_value);
-      hm->mss_value_net = mp->mss_value;
-    }
-  else
-    hm->mss_clamping = 0;
-
-  REPLY_MACRO (VL_API_HANAT_WORKER_SET_MSS_CLAMPING_REPLY);
-}
-
-static void
   vl_api_hanat_worker_interface_add_del_t_handler
   (vl_api_hanat_worker_interface_add_del_t * mp)
 {
@@ -274,7 +256,7 @@ send_hanat_worker_cache_details (vl_api_registration_t * reg, u32 context, hanat
   rmp->post_sp = s->entry.post_sp;
   rmp->post_dp = s->entry.post_dp;
   memcpy(&rmp->gre, &s->entry.gre, 4);
-  rmp->tcp_mss = htons(s->entry.tcp_mss);
+  rmp->tcp_mss = htons(s->entry.tcp_mss_value);
   rmp->cached_buffer = htonl(s->entry.buffer);
   rmp->flags = htonl(s->entry.flags);
   rmp->last_heard = (f64)clib_net_to_host_u64(s->entry.last_heard);
@@ -302,7 +284,6 @@ vl_api_hanat_worker_cache_dump_t_handler (vl_api_hanat_worker_cache_dump_t *mp)
 /* List of message types that this plugin understands */
 #define foreach_hanat_worker_plugin_api_msg				\
 _(HANAT_WORKER_ENABLE, hanat_worker_enable)				\
-_(HANAT_WORKER_SET_MSS_CLAMPING, hanat_worker_set_mss_clamping)         \
 _(HANAT_WORKER_INTERFACE_ADD_DEL, hanat_worker_interface_add_del)	\
 _(HANAT_WORKER_INTERFACES, hanat_worker_interfaces)			\
 _(HANAT_WORKER_MAPPER_ADD_DEL, hanat_worker_mapper_add_del)		\

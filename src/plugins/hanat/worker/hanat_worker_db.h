@@ -80,7 +80,8 @@ typedef struct {
   u16 post_dp;
   ip_csum_t checksum;
   ip_csum_t l4_checksum;
-  u16 tcp_mss;
+  u16 tcp_mss_value;
+  u16 tcp_mss_value_net;
   u32 buffer;
   f64 last_heard;
   f64 last_refreshed;
@@ -140,10 +141,6 @@ typedef struct {
   hanat_db_t db;
   hanat_pool_t pool_db;
   u16 udp_port;
-
-  /* TCP MSS clamping */
-  u16 mss_clamping;
-  u16 mss_value_net;
 
   /* error node index */
   u32 error_node_index;

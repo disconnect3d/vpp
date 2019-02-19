@@ -188,13 +188,3 @@ autoreply define hanat_worker_enable {
   u32 cache_expiry_timer;
   u32 cache_refresh_interval;
 };
-
-/*
- * Configure TCP MSS clamping
- */
-autoreply define hanat_worker_set_mss_clamping {
-  u32 client_index;
-  u32 context;
-  u16 mss_value;
-  u8 enable;
-};

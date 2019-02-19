@@ -101,6 +101,9 @@ typedef struct hanat_mapper_main_s
   /* request buffers */
   u32 **request_buffers;
 
+  /* TCP MSS clamping in net order */
+  u16 mss_value;
+
   /* convenience */
   vlib_main_t *vlib_main;
   vnet_main_t *vnet_main;

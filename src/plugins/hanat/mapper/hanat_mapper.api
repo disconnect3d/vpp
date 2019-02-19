@@ -245,6 +245,31 @@ service {
 };
 
 /*
+ * Configure TCP MSS clamping
+ */
+autoreply define hanat_mapper_set_mss_clamping {
+  u32 client_index;
+  u32 context;
+  u16 mss_value;
+  u8 enable;
+};
+
+define hanat_mapper_get_mss_clamping {
+  u32 client_index;
+  u32 context;
+};
+
+/*
+ * Get TCP MSS clamping configuration
+ */
+define hanat_mapper_get_mss_clamping_reply {
+  u32 context;
+  i32 retval;
+  u16 mss_value;
+  u8 enable;
+};
+
+/*
  * Local Variables:
  * eval: (c-set-style "gnu")
  * End:

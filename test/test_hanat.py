@@ -62,13 +62,13 @@ class TestHANAT(VppTestCase):
 
         # HANAT Session Request packet
         # forward packet from worker to mapper
-        pkt = self.capture_swap_and_send(self.pg2)
-        self.logger.error(pkt.show2())
+        pkt_1 = self.capture_swap_and_send(self.pg2)
 
         # HANAT Session Binding packet
         # forward packet from mapper to worker
-        pkt = self.capture_swap_and_send(self.pg2)
-        self.logger.error(pkt.show2())
+        pkt_2 = self.capture_swap_and_send(self.pg2)
+
+        return pkt_1, pkt_2
 
     def configure_plugins(self, prefix='172.16.2.4/30',
                           mapper_pool_id=0, worker_pool_id=None):
@@ -308,7 +308,7 @@ class TestHANAT(VppTestCase):
              TCP(sport=self.tcp_port_in, dport=self.tcp_external_port,
                  flags="S", options=[('MSS', 1400)]))
 
-        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1000,
+        rv = self.vapi.papi.hanat_mapper_set_mss_clamping(mss_value=1000,
                                                           enable=1)
         self.assertEqual(rv.retval, 0)
 
@@ -324,24 +324,36 @@ class TestHANAT(VppTestCase):
         # Negotiated MSS value greater than configured - changed
         self.verify_mss_value(capture[0], 1000)
 
-        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1500,
+        rv = self.vapi.papi.hanat_worker_cache_clear()
+        self.assertEqual(rv.retval, 0)
+
+        rv = self.vapi.papi.hanat_mapper_set_mss_clamping(mss_value=1500,
                                                           enable=0)
         self.assertEqual(rv.retval, 0)
 
         self.pg0.add_stream(p)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
+
+        self.simulate_hanat_proto()
+
         capture = self.pg1.get_capture(1)
         # MSS clamping disabled - negotiated MSS unchanged
         self.verify_mss_value(capture[0], 1400)
 
-        rv = self.vapi.papi.hanat_worker_set_mss_clamping(mss_value=1500,
+        rv = self.vapi.papi.hanat_worker_cache_clear()
+        self.assertEqual(rv.retval, 0)
+
+        rv = self.vapi.papi.hanat_mapper_set_mss_clamping(mss_value=1500,
                                                           enable=1)
         self.assertEqual(rv.retval, 0)
 
         self.pg0.add_stream(p)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
+
+        self.simulate_hanat_proto()
+
         capture = self.pg1.get_capture(1)
         # Negotiated MSS value smaller than configured - unchanged
         self.verify_mss_value(capture[0], 1400)
