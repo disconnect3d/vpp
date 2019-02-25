@@ -142,19 +142,34 @@ hanat_get_interface_mode(u32 sw_if_index)
 static u32
 find_mapper (u32 sw_if_index, u32 fib_index, ip4_header_t *ip, u32 mode)
 {
+  icmp46_header_t *icmp = (icmp46_header_t *) ip4_next_header (ip);
   hanat_worker_main_t *hm = &hanat_worker_main;
+  ip4_address_t src, dst;
   u32 mid = ~0;
+
+  if (ip->protocol == IP_PROTOCOL_ICMP && is_icmp_error_message (icmp))
+    {
+      icmp_echo_header_t *echo = (icmp_echo_header_t *) (icmp + 1);
+      ip = (ip4_header_t *) (echo + 1);
+      src = ip->dst_address;
+      dst = ip->src_address;
+    }
+  else
+    {
+      src = ip->src_address;
+      dst = ip->dst_address;
+    }
 
   if (mode == HANAT_WORKER_IF_OUTSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
-    mid = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(ip->dst_address.as_u32));
+    mid = hanat_lpm_64_lookup (&hm->pool_db, fib_index, ntohl(dst.as_u32));
   }
   if (mode == HANAT_WORKER_IF_INSIDE ||
       mode == HANAT_WORKER_IF_DUAL) {
     if (mid == ~0) {
       if (vec_len(hm->pool_db.lb_buckets) == 0)
-	  return ~0;
-      u32 i = htonl(ip->src_address.as_u32) % hm->pool_db.n_buckets;
+	return ~0;
+      u32 i = htonl(src.as_u32) % hm->pool_db.n_buckets;
       mid = hm->pool_db.lb_buckets[i];
     }
   }
@@ -209,6 +224,7 @@ hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session
   req->session_id = htonl(hanat_get_session_index(session));
   req->pool_id = htonl(pe->pool_id);
 
+  // TODO: test if these are GOOD
   req->desc.sa.as_u32 = session->key.sa.as_u32;
   req->desc.da.as_u32 = session->key.da.as_u32;
   req->desc.sp = session->key.sp;
@@ -270,6 +286,7 @@ hanat_worker_cache_add_incomplete(hanat_db_t *db, u32 fib_index, ip4_header_t *i
   hanat_session_key_t key;
   hanat_session_t *s;
 
+  // we don't care about return value
   hanat_key_from_ip(fib_index, ip, &key);
   /* Check if session already exists */
   s = hanat_session_find(db, &key);

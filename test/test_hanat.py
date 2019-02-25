@@ -358,6 +358,69 @@ class TestHANAT(VppTestCase):
         # Negotiated MSS value smaller than configured - unchanged
         self.verify_mss_value(capture[0], 1400)
 
+    def test_icmp_error_msg(self):
+        """ ICMP Error Messages """
+
+        self.configure_plugins()
+
+        # create session by sending TCP packet
+        pkt = (Ether(src=self.pg0.remote_mac, dst=self.pg0.local_mac) /
+               IP(src=self.pg0.remote_ip4, dst=self.pg1.remote_ip4) /
+               TCP(sport=8000, dport=80))
+        self.pg0.add_stream(pkt)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+
+        self.simulate_hanat_proto()
+        pkt = self.pg1.get_capture(1)[0]
+        self.logger.error(pkt.show2())
+
+        dyn_addr = pkt[IP].src
+        dyn_port = pkt[TCP].sport
+
+        # send out2in ICMP Error Message
+        self.logger.error(self.send_icmp_error_msg(self.pg1,
+            self.pg1.remote_ip4, self.pg1.local_ip4,
+            pkt[1]).show2())
+
+        self.simulate_hanat_proto()
+        pkt = self.pg0.get_capture(1)[0]
+        self.logger.error(pkt.show2())
+
+        inner_ip = pkt[3]
+        inner_tcp = pkt[4]
+
+        self.assertEqual(inner_ip.src, self.pg0.remote_ip4)
+        self.assertEqual(inner_ip.dst, self.pg1.remote_ip4)
+        self.assertEqual(inner_tcp.sport, 8000)
+        self.assertEqual(inner_tcp.dport, 80)
+
+        # send in2out ICMP Error Message
+        self.logger.error(self.send_icmp_error_msg(self.pg0,
+            self.pg0.remote_ip4, self.pg1.remote_ip4,
+            IP(src=self.pg1.remote_ip4, dst=self.pg0.remote_ip4) /
+            TCP(sport=80, dport=8000)).show2())
+
+        pkt = self.pg1.get_capture(1)[0]
+        self.logger.error(pkt.show2())
+
+        inner_ip = pkt[3]
+        inner_tcp = pkt[4]
+
+        self.assertEqual(inner_ip.src, self.pg1.remote_ip4)
+        self.assertEqual(inner_ip.dst, dyn_addr)
+        self.assertEqual(inner_tcp.sport, 80)
+        self.assertEqual(inner_tcp.dport, dyn_port)
+
+    def send_icmp_error_msg(self, pg, src, dst, tcp_udp):
+        p = (Ether(src=pg.remote_mac, dst=pg.local_mac) /
+             IP(src=src, dst=dst) /
+             ICMP(type=3, code=3) / tcp_udp)
+        pg.add_stream(p)
+        self.pg_enable_capture(self.pg_interfaces)
+        self.pg_start()
+        return p
+
     def verify_mss_value(self, pkt, mss):
         """
         Verify TCP MSS value

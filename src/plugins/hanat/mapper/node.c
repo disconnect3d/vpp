@@ -423,7 +423,8 @@ hanat_session_request_process (vlib_main_t * vm,
 
   if (is_in2out)
     {
-      instructions = HANAT_INSTR_SOURCE_ADDRESS | HANAT_INSTR_SOURCE_PORT;
+      instructions = HANAT_INSTR_SOURCE_ADDRESS |
+        HANAT_INSTR_SOURCE_PORT;
       rsp->sa = mapping->out_addr;
       rsp->da = session->out_r_addr;
 
