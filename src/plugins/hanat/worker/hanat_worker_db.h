@@ -23,6 +23,7 @@
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/ip/ip6_packet.h>
 #include <vnet/udp/udp_packet.h>
+#include <vnet/ip/icmp46_packet.h>
 #include "../protocol/hanat_protocol.h"
 
 #define HANAT_CACHE_EXPIRY_TIMER	100 /* Seconds */
@@ -36,6 +37,10 @@ typedef struct {
   u16 sequence;
 } icmp_echo_header_t;
 
+typedef struct
+{
+  u16 src_port, dst_port;
+} tcp_udp_header_t;
 
 /* NAT 6-tuple key. 16 octets */
 typedef struct {
@@ -158,6 +163,9 @@ typedef struct {
 
   void *gre_template;
 
+  /* log class */
+  vlib_log_class_t log_class;
+
   u32 cache_expiry_timer;	/* In seconds */
   u32 cache_refresh_interval;	/* In seconds */
 
@@ -167,18 +175,18 @@ typedef struct {
 
 extern hanat_worker_main_t hanat_worker_main;
 
+void hanat_worker_debug_break_helper (void);
 void hanat_db_init (hanat_db_t * db, u32 buckets, u32 memory_size);
 void hanat_db_free (hanat_db_t * db);
 hanat_session_t *hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry_t *e);
 void hanat_session_delete (hanat_db_t *db, hanat_session_key_t *key);
 hanat_session_t *hanat_session_find (hanat_db_t *db, hanat_session_key_t *key);
-hanat_session_t *hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip);
 
 int hanat_worker_interface_add_del (u32 sw_if_index, bool is_add, vl_api_hanat_worker_if_mode_t mode);
 clib_error_t *hanat_worker_api_init (vlib_main_t * vm, hanat_worker_main_t *hm);
 int hanat_worker_cache_add (hanat_session_key_t *key, hanat_session_entry_t *entry);
 int hanat_worker_cache_clear(void);
-void hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key);
+int hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key);
 int l3_checksum_delta(hanat_instructions_t instructions,
 		      ip4_address_t pre_sa, ip4_address_t post_sa,
 		      ip4_address_t pre_da, ip4_address_t post_da);
@@ -235,5 +243,32 @@ hanat_send_to_node(vlib_main_t *vm, u32 *pi_vector,
   }
 }
 
+static inline u8
+is_icmp_error_message (icmp46_header_t * icmp)
+{
+  switch (icmp->type)
+    {
+    case ICMP4_destination_unreachable:
+    case ICMP4_time_exceeded:
+    case ICMP4_parameter_problem:
+    case ICMP4_source_quench:
+    case ICMP4_redirect:
+    case ICMP4_alternate_host_address:
+      return 1;
+    }
+  return 0;
+}
+
+static inline u8
+is_icmp_echo_message (icmp46_header_t *icmp)
+{
+  switch (icmp->type)
+    {
+      case ICMP4_echo_request:
+      case ICMP4_echo_reply:
+        return 1;
+    }
+  return 0;
+}
 
 #endif

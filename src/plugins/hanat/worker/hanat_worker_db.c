@@ -1,7 +1,7 @@
+#include <arpa/inet.h>
 #include <assert.h>
 #include "hanat_worker_db.h"
 #include <vnet/udp/udp_packet.h>
-#include <vnet/ip/icmp46_packet.h>
 #include <vppinfra/bihash_template.c>
 #include <vppinfra/vec.h>
 
@@ -40,29 +40,86 @@ hanat_db_free (hanat_db_t * db)
 }
 
 void
+hanat_worker_debug_break_helper (void)
+{
+  vlib_log (VLIB_LOG_LEVEL_WARNING, hanat_worker_main.log_class,
+            "die_info: debug_break_helper called");
+}
+
+int
 hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
 {
   u16 sport = 0, dport = 0;
-  if (ip->protocol == IP_PROTOCOL_TCP ||
-      ip->protocol == IP_PROTOCOL_UDP) {
-    udp_header_t *udp = ip4_next_header (ip);
-    sport = udp->src_port;
-    dport = udp->dst_port;
-  } else if (ip->protocol == IP_PROTOCOL_ICMP) {
-    icmp46_header_t *icmp = (icmp46_header_t *) ip4_next_header (ip);
-    if (icmp->type == ICMP4_echo_request ||
-	icmp->type == ICMP4_echo_reply) {
-      icmp_echo_header_t *echo = (icmp_echo_header_t *) (icmp + 1);
-      dport = sport = echo->identifier;
-    }
-  }
+  ip4_address_t src, dst;
+  u8 proto;
 
-  key->sa = ip->src_address;
-  key->da = ip->dst_address;
-  key->proto = ip->protocol;
-  key->fib_index = fib_index;
+  src = ip->src_address;
+  dst = ip->dst_address;
+  proto = ip->protocol;
+
+  if (ip->protocol == IP_PROTOCOL_TCP || ip->protocol == IP_PROTOCOL_UDP)
+    {
+      udp_header_t *udp = ip4_next_header (ip);
+      sport = udp->src_port;
+      dport = udp->dst_port;
+    }
+  else if (ip->protocol == IP_PROTOCOL_ICMP)
+    {
+      icmp46_header_t *icmp = (icmp46_header_t *) ip4_next_header (ip);
+      icmp_echo_header_t *echo = (icmp_echo_header_t *) (icmp + 1);
+
+      if (PREDICT_TRUE (is_icmp_echo_message (icmp)))
+        {
+          dport = sport = echo->identifier;
+        }
+      else if (is_icmp_error_message (icmp))
+        {
+          ip4_header_t *inner_ip = (ip4_header_t *) (echo + 1);
+          tcp_udp_header_t *l4_header = ip4_next_header (inner_ip);
+          void *end = ((void *) ip) + htons (ip->length);
+
+          if ((void *)(l4_header + 1) > end)
+            {
+              clib_warning ("Embeded ICMP Error Message packet incomplete");
+              return 1;
+            }
+
+          proto = inner_ip->protocol;
+
+          switch (proto)
+            {
+              case IP_PROTOCOL_UDP:
+              case IP_PROTOCOL_TCP:
+                dport = ((tcp_udp_header_t *) l4_header)->src_port;
+                sport = ((tcp_udp_header_t *) l4_header)->dst_port;
+                break;
+              default:
+                clib_warning ("Embeded ICMP Error protocol not implemented");
+                return 1;
+            }
+
+          dst = inner_ip->src_address;
+          src = inner_ip->dst_address;
+        }
+      else
+        {
+          clib_warning ("ICMP type not implemented");
+          return 1;
+        }
+    }
+  else
+    {
+      clib_warning ("Protocol not implemented");
+      return 1;
+    }
+
+  key->sa = src;
+  key->da = dst;
   key->sp = sport;
   key->dp = dport;
+  key->proto = proto;
+  key->fib_index = fib_index;
+  return 0;
 }
 
 hanat_session_t *
@@ -79,14 +136,6 @@ hanat_session_find (hanat_db_t *db, hanat_session_key_t *key)
   if (pool_is_free_index (db->sessions, value.value)) /* Is this check necessary? */
     return 0;
   return pool_elt_at_index (db->sessions, value.value);
-}
-
-hanat_session_t *
-hanat_session_find_ip (hanat_db_t *db, u32 fib_index, ip4_header_t *ip)
-{
-  hanat_session_key_t key;
-  hanat_key_from_ip(fib_index, ip, &key);
-  return hanat_session_find(db, &key);
 }
 
 int
