@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <assert.h>
 #include "hanat_worker_db.h"
 #include <vnet/udp/udp_packet.h>
@@ -39,7 +40,7 @@ hanat_db_free (hanat_db_t * db)
 }
 
 void
-debug_break_helper (void)
+hanat_worker_debug_break_helper (void)
 {
   vlib_log (VLIB_LOG_LEVEL_WARNING, hanat_worker_main.log_class,
             "die_info: debug_break_helper called");
@@ -50,10 +51,11 @@ hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
 {
   u16 sport = 0, dport = 0;
   ip4_address_t src, dst;
-  void *l4_header = 0;
+  u8 proto;
 
   src = ip->src_address;
   dst = ip->dst_address;
+  proto = ip->protocol;
 
   if (ip->protocol == IP_PROTOCOL_TCP || ip->protocol == IP_PROTOCOL_UDP)
     {
@@ -72,14 +74,19 @@ hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
         }
       else if (is_icmp_error_message (icmp))
         {
-          ip = (ip4_header_t *) (echo + 1);
-          l4_header = ip4_next_header (ip);
+          ip4_header_t *inner_ip = (ip4_header_t *) (echo + 1);
+          tcp_udp_header_t *l4_header = ip4_next_header (inner_ip);
+          void *end = ((void *) ip) + htons (ip->length);
 
-          // TODO: REVIEW: it has to be reversed ( in2out & out2in ) ??
-          dst = ip->src_address;
-          src = ip->dst_address;
+          if ((void *)(l4_header + 1) > end)
+            {
+              clib_warning ("Embeded ICMP Error Message packet incomplete");
+              return 1;
+            }
 
-          switch (ip->protocol)
+          proto = inner_ip->protocol;
+
+          switch (proto)
             {
               case IP_PROTOCOL_UDP:
               case IP_PROTOCOL_TCP:
@@ -90,6 +97,9 @@ hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
                 clib_warning ("Embeded ICMP Error protocol not implemented");
                 return 1;
             }
+
+          dst = inner_ip->src_address;
+          src = inner_ip->dst_address;
         }
       else
         {
@@ -105,10 +115,10 @@ hanat_key_from_ip (u32 fib_index, ip4_header_t *ip, hanat_session_key_t *key)
 
   key->sa = src;
   key->da = dst;
-  key->proto = ip->protocol;
-  key->fib_index = fib_index;
   key->sp = sport;
   key->dp = dport;
+  key->proto = proto;
+  key->fib_index = fib_index;
   return 0;
 }
 

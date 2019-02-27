@@ -179,8 +179,6 @@ mss_clamping (hanat_session_entry_t *entry, tcp_header_t * tcp, ip_csum_t * sum)
     }
 }
 
-// TODO: if error occures we wanna drop the packet for specific reason
-// return error / change how the logic goes from node function to this call
 static bool
 transform_packet (hanat_worker_main_t *hm, hanat_session_entry_t *s, ip4_header_t *ip)
 {

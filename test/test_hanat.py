@@ -387,8 +387,8 @@ class TestHANAT(VppTestCase):
         pkt = self.pg0.get_capture(1)[0]
         self.logger.error(pkt.show2())
 
-        inner_ip = pkt[3]
-        inner_tcp = pkt[4]
+        inner_ip = pkt[IPerror]
+        inner_tcp = pkt[TCPerror]
 
         self.assertEqual(inner_ip.src, self.pg0.remote_ip4)
         self.assertEqual(inner_ip.dst, self.pg1.remote_ip4)
@@ -404,8 +404,8 @@ class TestHANAT(VppTestCase):
         pkt = self.pg1.get_capture(1)[0]
         self.logger.error(pkt.show2())
 
-        inner_ip = pkt[3]
-        inner_tcp = pkt[4]
+        inner_ip = pkt[IPerror]
+        inner_tcp = pkt[TCPerror]
 
         self.assertEqual(inner_ip.src, self.pg1.remote_ip4)
         self.assertEqual(inner_ip.dst, dyn_addr)

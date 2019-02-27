@@ -175,7 +175,7 @@ typedef struct {
 
 extern hanat_worker_main_t hanat_worker_main;
 
-void debug_break_helper (void);
+void hanat_worker_debug_break_helper (void);
 void hanat_db_init (hanat_db_t * db, u32 buckets, u32 memory_size);
 void hanat_db_free (hanat_db_t * db);
 hanat_session_t *hanat_session_add (hanat_db_t *db, hanat_session_key_t *key, hanat_session_entry_t *e);

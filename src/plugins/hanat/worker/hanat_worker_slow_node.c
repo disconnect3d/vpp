@@ -224,7 +224,6 @@ hanat_protocol_request(u32 vni, hanat_pool_entry_t *pe, hanat_session_t *session
   req->session_id = htonl(hanat_get_session_index(session));
   req->pool_id = htonl(pe->pool_id);
 
-  // TODO: test if these are GOOD
   req->desc.sa.as_u32 = session->key.sa.as_u32;
   req->desc.da.as_u32 = session->key.da.as_u32;
   req->desc.sp = session->key.sp;
