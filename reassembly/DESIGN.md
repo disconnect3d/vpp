@@ -48,6 +48,8 @@ with first and next buffer indicies.
 All APIs and data structures must have C based unit tests.
 TDD should be used.
 
+As many features will depend on this code, it should be put in the VNET library as a subsystem under `src/vnet/reass`.
+
 ## Implementation considerations
 
 ### Flow node
@@ -68,3 +70,9 @@ The proposed algorithm is to use a shared bihash where the value is a 64 bit con
 Is there a potential race condition here?
 
 An alternative is to split the "flow state space" and use a stateless algorithm to pick worker. That would lead to more handovers though.
+
+### Existing code
+
+* MAP Virtual reassembly: https://github.com/vpp-dev/vpp/blob/vreass/src/plugins/map/map.h#L66
+* NAT Virtual reassembly: https://github.com/vpp-dev/vpp/blob/vreass/src/plugins/nat/nat_reass.h
+* IP46 full reassembly: https://github.com/vpp-dev/vpp/blob/vreass/src/vnet/ip/ip6_reassembly.h
