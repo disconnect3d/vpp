@@ -79,3 +79,17 @@ add_vpp_plugin(nat
   nat_all_api_h.h
   nat_msg_enum.h
 )
+
+add_vpp_plugin(nat-dp
+  SOURCES
+  dp/natdp_db.c
+)
+
+add_vpp_executable(natdp_test
+  SOURCES
+  dp/test_natdp.c
+  dp/natdp_db.c
+
+  LINK_LIBRARIES
+  vppinfra
+)
