@@ -157,7 +157,6 @@ shmdb_create_pointer (shmdb_directory_t *fs, char *pathname, void *data)
   char *filename = vec_pop(paths);
   shmdb_inode_t *dir = shmdb_lookup_vector(fs, paths);
   assert(dir);
-  printf("Filename %s %s\n", filename, dir->name);
 
   /* Add filename to directory */
   void* oldheap = clib_mem_set_heap(fs->heap);

@@ -23,6 +23,7 @@
 #include <vnet/dpo/load_balance.h>
 #include "lpm.h"
 #include <vppinfra/lock.h>
+#include <vpp/shmdb/shmdb.h>
 
 #define MAP_SKIP_IP6_LOOKUP 1
 
@@ -160,6 +161,8 @@ extern map_main_pre_resolved_t pre_resolved[FIB_PROTOCOL_MAX];
 
 typedef struct
 {
+  shmdb_directory_t *operational_ds;
+
   /* pool of MAP domains */
   map_domain_t *domains;
   u32 domains_index;

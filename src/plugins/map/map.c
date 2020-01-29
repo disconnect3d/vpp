@@ -142,7 +142,7 @@ map_create_domain (ip4_address_t * ip4_prefix,
     }
 
   /* Get domain index */
-  shmdb_pool_get_aligned (mm->domains_index, mm->domains, d, CLIB_CACHE_LINE_BYTES);
+  shmdb_pool_get_aligned (mm->operational_ds, mm->domains_index, mm->domains, d, CLIB_CACHE_LINE_BYTES);
   clib_memset (d, 0, sizeof (*d));
   *map_domain_index = d - mm->domains;
 
@@ -1512,8 +1512,9 @@ map_init (vlib_main_t * vm)
   mm->frag_ignore_df = false;
 
   /* The map domains are stored in the operational datasegment */
-  shmdb_directory_t *fs = vlib_stat_segment_get_shared_header()->operational_ds;
-  mm->domains_index = shmdb_create_pointer(fs, "/map/domains", mm->domains);
+  mm->operational_ds = vlib_stat_segment_get_shared_header()->operational_ds;
+  shmdb_mkdir(mm->operational_ds, "/map");
+  mm->domains_index = shmdb_create_pointer(mm->operational_ds, "/map/domains", mm->domains);
   vec_validate (mm->domain_counters, MAP_N_DOMAIN_COUNTER - 1);
   mm->domain_counters[MAP_DOMAIN_COUNTER_RX].name = "/map/rx";
   mm->domain_counters[MAP_DOMAIN_COUNTER_TX].name = "/map/tx";
