@@ -1,6 +1,6 @@
 {
     "map": {
-	"path": "/map",
+	"path": "/map/domains",
 	"key": "index",
 	"vector": {
 	    "ip6_prefix": {

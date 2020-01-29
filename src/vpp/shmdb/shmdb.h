@@ -99,7 +99,7 @@ typedef struct
 
 int shmdb_mkdir(shmdb_directory_t *fs, const char *pathname);
 shmdb_inode_t *shmdb_lookup(shmdb_directory_t *fs, const char *pathname);
-u32 shmdb_create_pointer (char *path, void *data);
+u32 shmdb_create_pointer (shmdb_directory_t *fs, char *path, void *data);
 
 /* Shared memory segment */
 void shmdb_lock (shmdb_directory_t *d);

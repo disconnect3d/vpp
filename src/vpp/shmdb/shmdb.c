@@ -23,7 +23,7 @@ void shmdb_unlock (shmdb_directory_t *d)
 }
 
 /*
- * Create a new directory node
+ * Create the directory nodes for a path vector
  */
 int
 shmdb_mkdir_vector (shmdb_directory_t *fs, char **pathvector)
@@ -72,6 +72,9 @@ shmdb_mkdir_vector (shmdb_directory_t *fs, char **pathvector)
   return rv;
 }
 
+/*
+ * Create directory nodes for a path
+ */
 int
 shmdb_mkdir (shmdb_directory_t *fs, const char *pathname)
 {
@@ -89,19 +92,12 @@ shmdb_mkdir (shmdb_directory_t *fs, const char *pathname)
   return rv;
 }
 
-/*
- * Look up a path in the directory hierarchy
- */
-shmdb_inode_t *shmdb_lookup (shmdb_directory_t *fs, const char *pathname)
+shmdb_inode_t *
+shmdb_lookup_vector (shmdb_directory_t *fs, char **paths)
 {
   hash_pair_t *hp;
   int i;
 
-  assert (fs);
-  assert (pathname);
-
-  /* Split path into individual elements */
-  char **paths = split_path (pathname);
   shmdb_lock (fs);
   shmdb_inode_t *dir = fs->root;
   vec_foreach_index (i, paths)
@@ -123,57 +119,60 @@ shmdb_inode_t *shmdb_lookup (shmdb_directory_t *fs, const char *pathname)
       }
   }
   shmdb_unlock (fs);
+  return dir;
+}
+
+/*
+ * Look up a path in the directory hierarchy
+ */
+shmdb_inode_t *
+shmdb_lookup (shmdb_directory_t *fs, const char *pathname)
+{
+  assert (fs);
+  assert (pathname);
+
+  /* Split path into individual elements */
+  char **paths = split_path (pathname);
+  assert(paths);
+
+  shmdb_inode_t *dir = shmdb_lookup_vector(fs, paths);
+
   split_path_free (paths);
   return dir;
 }
 
 /*
- * Create a leaf
- *
- * Input: 1) Name of directory
- *        2) Index of directory
- *        3) Pointer to directory structure
- *
- *        1) Filename
- *        2) Full pathname
- *
- *        Pointer to data object.
+ * Create a pointer leaf
+ * pathname is the full path, the directory must exist.
  */
-// Expect directory to exist?
-//
 u32
-shmdb_create_parent(char *path, void *data)
+shmdb_create_pointer (shmdb_directory_t *fs, char *pathname, void *data)
 {
-  return 0;
-}
+  /* Split path into individual elements */
+  char **paths = split_path (pathname);
+  assert(paths);
 
-#if 0
-shmdb_inode_t *
-shmdb_create (shmdb_inode_t *dir, char *filename)
-{
-  assert (dir);
-  assert (filename);
+  /* Get directory node */
+  char *filename = vec_pop(paths);
+  shmdb_inode_t *dir = shmdb_lookup_vector(fs, paths);
+  assert(dir);
+  printf("Filename %s %s\n", filename, dir->name);
 
+  /* Add filename to directory */
   shmdb_inode_t *d;
-  pool_get_zero (dir->dir_vec, d);
-  assert (d);
+  pool_get_zero (fs->root, d);
+  u32 index = d - fs->root;
 
-  u32 index = d - dir->dir_vec;
+  /* Copy name */
   char *n = (char *)format (0, "%s%c", filename, 0);
-  assert (n);
-
-  if (!dir->dir_vec_by_name)
-    {
-      dir->dir_vec_by_name = hash_create_string (0, sizeof (uword));
-      assert (dir->dir_vec_by_name);
-    }
   hash_set (dir->dir_vec_by_name, n, index);
+  vec_add1(dir->dir_vec, index);
   d->name = n;
-  d->type = type;
+  d->type = SHMDB_INODE_TYPE_POINTER;
+  d->data = data;
 
-  return d;
+  return index;
 }
-#endif
 
 /*
  * Create a new datastore
