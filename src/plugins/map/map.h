@@ -162,6 +162,7 @@ typedef struct
 {
   /* pool of MAP domains */
   map_domain_t *domains;
+  u32 domains_index;
   map_domain_extra_t *domain_extras;
 
   /* MAP Domain packet/byte counters indexed by map domain index */

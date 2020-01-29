@@ -115,5 +115,6 @@ stat_segment_register_state_counter(u8 *name, u32 *index);
 clib_error_t *
 stat_segment_deregister_state_counter(u32 index);
 void stat_segment_set_state_counter (u32 index, u64 value);
+stat_segment_shared_header_t *vlib_stat_segment_get_shared_header (void);
 
 #endif

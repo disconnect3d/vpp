@@ -60,6 +60,9 @@ set(VPP_SOURCES
   api/json_format.c
   api/custom_dump.c
   api/types.c
+  shmdb/shmdb.c
+  shmdb/shmdb_init.c
+  shmdb/shmdb_cli.c
 )
 
 if(VPP_API_TEST_BUILTIN)
@@ -84,6 +87,7 @@ add_vpp_headers(vpp
   api/vpe_all_api_h.h
   stats/stat_segment.h
   stats/stat_segment_shared.h
+  shmdb/shmdb.h
 )
 
 ##############################################################################
@@ -116,6 +120,13 @@ add_vpp_executable(vpp_prometheus_export
   SOURCES app/vpp_prometheus_export.c
   LINK_LIBRARIES vppapiclient vppinfra svm vlibmemoryclient
   DEPENDS api_headers
+)
+
+add_vpp_executable(test_shmdb
+  SOURCES
+  shmdb/shmdb.c
+  shmdb/test_shmdb.c
+  LINK_LIBRARIES vppinfra pthread
 )
 
 install(FILES conf/startup.conf DESTINATION etc/vpp COMPONENT vpp)

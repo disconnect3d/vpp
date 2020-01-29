@@ -1,0 +1,36 @@
+{
+    "map": {
+	"path": "/map",
+	"key": "index",
+	"vector": {
+	    "ip6_prefix": {
+		"type": "ip6_prefix"
+	    },
+	    "ip4_prefix": {
+		"type": "ip4_prefix"
+	    },
+	    "ip6_src": {
+		"type": "ip6_prefix"
+	    },
+	    "ea_bits_len": {
+		"type": "u8"
+	    },
+	    "psid_offset": {
+		"type": "u8"
+	    },
+	    "psid_length": {
+		"type": "u8"
+	    },
+	    "flags": {
+		"type": "u8"
+	    },
+	    "mtu": {
+		"type": "u16"
+	    },
+	    "tag": {
+		"type": "string",
+		"limit": 64
+	    }
+	}
+    }
+}
