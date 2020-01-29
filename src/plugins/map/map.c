@@ -23,6 +23,7 @@
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
 #include <vpp/shmdb/shmdb.h>
+#include <vpp/shmdb/shmdb_inlines.h>
 #include "map.h"
 
 map_main_t map_main;
@@ -227,7 +228,7 @@ map_delete_domain (u32 map_domain_index)
   if (d->rules)
     clib_mem_free (d->rules);
 
-  pool_put (mm->domains, d);
+  shmdb_pool_put (mm->operational_ds, mm->domains_index, mm->domains, d);
 
   return 0;
 }

@@ -109,16 +109,4 @@ void shmdb_unlock (shmdb_directory_t *d);
 
 shmdb_directory_t *shmdb_createdb (void *heap);
 
-/* Wrappers for vppinfra that allocates from our heap */
-#define shmdb_pool_get_aligned(DS,I,P,E,A)			\
-do {								\
-  shmdb_lock(DS);						\
-  shmdb_inode_t *inode = pool_elt_at_index(DS->root, I);	\
-  void *oldheap = clib_mem_set_heap(DS->heap);			\
-  pool_get_aligned(P,E,A);					\
-  inode->data = P;						\
-  shmdb_unlock(DS);						\
-  clib_mem_set_heap(oldheap);					\
-} while(0)
-
 #endif
