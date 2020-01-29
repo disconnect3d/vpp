@@ -23,8 +23,16 @@
 #include <vppinfra/linux/syscall.h>
 #include <vpp-api/client/stat_client.h>
 #include <vppinfra/mheap.h>
+#include <vpp/shmdb/shmdb.h>
 
 stat_segment_main_t stat_segment_main;
+
+stat_segment_shared_header_t *
+vlib_stat_segment_get_shared_header (void)
+{
+  stat_segment_main_t *sm = &stat_segment_main;
+  return sm->shared_header;
+}
 
 /*
  *  Used only by VPP writers
@@ -336,6 +344,7 @@ vlib_map_stat_segment_init (void)
   sm->directory_vector[STAT_COUNTER_MEM_STATSEG_TOTAL].value =
     usage.bytes_total;
 
+  shared_header->operational_ds = shmdb_createdb();
   return 0;
 }
 

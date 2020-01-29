@@ -22,6 +22,7 @@
 #include <vppinfra/crc32.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
+#include <vpp/shmdb/shmdb.h>
 #include "map.h"
 
 map_main_t map_main;
@@ -141,7 +142,7 @@ map_create_domain (ip4_address_t * ip4_prefix,
     }
 
   /* Get domain index */
-  pool_get_aligned (mm->domains, d, CLIB_CACHE_LINE_BYTES);
+  shmdb_pool_get_aligned (mm->domains_index, mm->domains, d, CLIB_CACHE_LINE_BYTES);
   clib_memset (d, 0, sizeof (*d));
   *map_domain_index = d - mm->domains;
 
@@ -1510,6 +1511,8 @@ map_init (vlib_main_t * vm)
   mm->frag_inner = false;
   mm->frag_ignore_df = false;
 
+  /* The map domains are stored in the operational datasegment */
+  mm->domains_index = shmdb_create_pointer("/map/domains", mm->domains);
   vec_validate (mm->domain_counters, MAP_N_DOMAIN_COUNTER - 1);
   mm->domain_counters[MAP_DOMAIN_COUNTER_RX].name = "/map/rx";
   mm->domain_counters[MAP_DOMAIN_COUNTER_TX].name = "/map/tx";

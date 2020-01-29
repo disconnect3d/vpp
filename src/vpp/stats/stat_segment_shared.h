@@ -41,6 +41,7 @@ typedef struct
 /*
  * Shared header first in the shared memory segment.
  */
+typedef struct shmdb_directory_t shmdb_directory_t;
 typedef struct
 {
   uint64_t version;
@@ -49,6 +50,7 @@ typedef struct
   volatile uint64_t directory_offset;
   volatile uint64_t error_offset;
   volatile uint64_t stats_offset;
+  shmdb_directory_t *operational_ds;
 } stat_segment_shared_header_t;
 
 static inline void *
