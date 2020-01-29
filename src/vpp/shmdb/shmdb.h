@@ -83,6 +83,7 @@ typedef struct shmdb_directory_t
   clib_spinlock_t lockp;		/* Used by VPP to ensure single writer */
   volatile uint64_t epoch;		/* Increased when VPP is done writing */
   volatile uint64_t in_progress;	/* VPP sets this when it's writing */
+  void *heap;
   shmdb_inode_t *root;			/* Pool of all the filesystem's inodes */
 } shmdb_directory_t;
 
@@ -106,7 +107,7 @@ void shmdb_lock (shmdb_directory_t *d);
 void shmdb_unlock (shmdb_directory_t *d);
 
 
-shmdb_directory_t *shmdb_createdb (void);
+shmdb_directory_t *shmdb_createdb (void *heap);
 
 /* Wrappers for vppinfra that allocates from our heap */
 #define shmdb_pool_get_aligned(I, P,E,A)			\

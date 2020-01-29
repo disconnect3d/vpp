@@ -5,9 +5,11 @@
 static clib_error_t *
 shmdb_init (vlib_main_t * vm)
 {
+  stat_segment_main_t *sm = &stat_segment_main;
+
   stat_segment_shared_header_t *shared_header = vlib_stat_segment_get_shared_header();
 
-  shared_header->operational_ds = shmdb_createdb();
+  shared_header->operational_ds = shmdb_createdb(sm->heap);
 
   return 0;
 }

@@ -344,7 +344,6 @@ vlib_map_stat_segment_init (void)
   sm->directory_vector[STAT_COUNTER_MEM_STATSEG_TOTAL].value =
     usage.bytes_total;
 
-  shared_header->operational_ds = shmdb_createdb();
   return 0;
 }
 

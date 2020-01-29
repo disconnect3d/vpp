@@ -33,6 +33,7 @@ shmdb_mkdir_vector (shmdb_directory_t *fs, char **pathvector)
   hash_pair_t *hp;
   shmdb_inode_t *dir = fs->root;
   shmdb_lock (fs);
+  void* oldheap = clib_mem_set_heap(fs->heap);
   vec_foreach (p, pathvector)
   {
     hp = hash_get_pair (dir->dir_vec_by_name, *p);
@@ -68,7 +69,7 @@ shmdb_mkdir_vector (shmdb_directory_t *fs, char **pathvector)
       }
   }
   shmdb_unlock (fs);
-
+  clib_mem_set_heap(oldheap);
   return rv;
 }
 
@@ -159,6 +160,7 @@ shmdb_create_pointer (shmdb_directory_t *fs, char *pathname, void *data)
   printf("Filename %s %s\n", filename, dir->name);
 
   /* Add filename to directory */
+  void* oldheap = clib_mem_set_heap(fs->heap);
   shmdb_inode_t *d;
   pool_get_zero (fs->root, d);
   u32 index = d - fs->root;
@@ -170,7 +172,7 @@ shmdb_create_pointer (shmdb_directory_t *fs, char *pathname, void *data)
   d->name = n;
   d->type = SHMDB_INODE_TYPE_POINTER;
   d->data = data;
-
+  clib_mem_set_heap(oldheap);
   return index;
 }
 
@@ -178,18 +180,21 @@ shmdb_create_pointer (shmdb_directory_t *fs, char *pathname, void *data)
  * Create a new datastore
  */
 shmdb_directory_t *
-shmdb_createdb (void)
+shmdb_createdb (void* heap)
 {
+  void* oldheap = clib_mem_set_heap(heap);
   shmdb_directory_t *fs = clib_mem_alloc (sizeof (*fs));
   clib_memset(fs, 0, sizeof(*fs));
   clib_spinlock_init (&fs->lockp);
   fs->epoch = 0;
   fs->in_progress = 0;
   fs->root = 0;
+  fs->heap = heap;
   shmdb_inode_t *d;
   pool_get_zero (fs->root, d);
   char *n = (char *)format (0, "/%c", 0);
   d->name = n;
+  clib_mem_set_heap(oldheap);
   return fs;
 }
 
