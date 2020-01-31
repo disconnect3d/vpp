@@ -1515,7 +1515,7 @@ map_init (vlib_main_t * vm)
   /* The map domains are stored in the operational datasegment */
   mm->operational_ds = vlib_stat_segment_get_shared_header()->operational_ds;
   shmdb_mkdir(mm->operational_ds, "/map");
-  mm->domains_index = shmdb_create_pointer(mm->operational_ds, "/map/domains", mm->domains);
+  mm->domains_index = shmdb_create_pointer(mm->operational_ds, "/map", "domains", mm->domains);
   vec_validate (mm->domain_counters, MAP_N_DOMAIN_COUNTER - 1);
   mm->domain_counters[MAP_DOMAIN_COUNTER_RX].name = "/map/rx";
   mm->domain_counters[MAP_DOMAIN_COUNTER_TX].name = "/map/tx";

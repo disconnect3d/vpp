@@ -1,12 +1,17 @@
-#ifndef included_shmdb_h
-#define included_shmdb_h
-
-#include <stdint.h>
-#include <vppinfra/vec.h>
-#include <vppinfra/pool.h>
-#include <vppinfra/lock.h>
-#include <vppinfra/hash.h>
-#include <vpp/stats/stat_segment.h>
+/*
+ * Copyright (c) 2020 Cisco and/or its affiliates.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * SHMDB - A shared memory hierarchical KV store.
@@ -56,6 +61,16 @@
  * outside of the shared memory segment.
  */
 
+#ifndef included_shmdb_h
+#define included_shmdb_h
+
+#include <stdint.h>
+#include <vppinfra/vec.h>
+#include <vppinfra/pool.h>
+#include <vppinfra/lock.h>
+#include <vppinfra/hash.h>
+#include <vpp/stats/stat_segment.h>
+
 typedef enum {
   SHMDB_INODE_TYPE_DIR = 0,
   SHMDB_INODE_TYPE_INLINE,
@@ -72,8 +87,12 @@ struct shmdb_inode
       u32 *dir_vec; 	/* Vector of indicies into the inode pool */
       uword *dir_vec_by_name;
     };
-    u64 value;	/* Inline data */
-    void *data;
+    struct {		/* Symlink */
+      u32 inode_index;
+      u32 inode_data_index;
+    };
+    u64 value;		/* Inline data */
+    void *data;		/* Pointer */
   };
   char *name;
 };
@@ -98,15 +117,30 @@ typedef struct
   shmdb_directory_t fs;
 } shmdb_segment_shared_header_t;
 
-int shmdb_mkdir(shmdb_directory_t *fs, const char *pathname);
-shmdb_inode_t *shmdb_lookup(shmdb_directory_t *fs, const char *pathname);
-u32 shmdb_create_pointer (shmdb_directory_t *fs, char *path, void *data);
+/*
+ * Public API
+ */
+int shmdb_mkdir(shmdb_directory_t *fs, char *directory);
+shmdb_inode_t *shmdb_lookup(shmdb_directory_t *fs, char *pathname);
+u32 shmdb_lookup_index (shmdb_directory_t *fs, char *pathname);
+
+/* Functions to create values */
+u32 shmdb_create_pointer (shmdb_directory_t *fs, char *directory, char *filename, void *data);
+u32 shmdb_create_inline (shmdb_directory_t *fs, char *directory, char *filename, u64 value);
+u32 shmdb_create_symlink (shmdb_directory_t *fs, char *directory, char *filename, u32 index, u32 vec_index);
 
 /* Shared memory segment */
 void shmdb_lock (shmdb_directory_t *d);
 void shmdb_unlock (shmdb_directory_t *d);
 
-
 shmdb_directory_t *shmdb_createdb (void *heap);
 
 #endif
+
+/*
+ * Support '/' in filenames (not in directory)
+ * What happens if delete what symlink points to?
+ *   - Reuse of pool indicies?
+ *
+ * Client
+ */
