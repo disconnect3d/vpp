@@ -15,7 +15,6 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 add_vpp_plugin(flowrouter
   SOURCES
-  flowrouter_handoff.c
   flowrouter_fastpath.c
   flowrouter_slowpath.c
   flowrouter.c

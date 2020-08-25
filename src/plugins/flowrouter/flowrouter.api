@@ -18,15 +18,14 @@ enum flowrouter_arc {
 };
 
 enum flowrouter_cache_miss_behaviour {
-  FLOWROUTER_CACHE_MISS_FORWARD,
+  FLOWROUTER_CACHE_MISS_FORWARD = 0,
   FLOWROUTER_CACHE_MISS_DROP,
   FLOWROUTER_CACHE_MISS_PUNT,
 };
 
-typedef flowrouter_params {
-  vl_api_flowrouter_cache_miss_behaviour_t cache_miss;
-  vl_api_ip4_address_t punt_node;
-  u16 punt_port;
+typedef flowrouter_dpo {
+  u32 fib_index;
+  vl_api_ip4_prefix_t prefix;
 };
 
 autoreply define flowrouter_enable
@@ -35,16 +34,8 @@ autoreply define flowrouter_enable
   u32 context;
   vl_api_flowrouter_arc_t arc;
   vl_api_interface_index_t sw_if_index;
-  vl_api_flowrouter_params_t params;
-};
-
-autoreply define flowrouter_enable_dpo
-{
-  u32 client_index;
-  u32 context;
-  u32 fib_index;
-  vl_api_ip4_prefix_t prefix;
-  vl_api_flowrouter_params_t params;
+  vl_api_flowrouter_dpo_t dpo;
+  vl_api_flowrouter_cache_miss_behaviour_t cache_miss [default=0];
 };
 
 typedef flowrouter_key {
@@ -56,7 +47,7 @@ typedef flowrouter_key {
   u16 dp;
 };
 
-autoreply define flowrouter_session_add
+define flowrouter_session_add
 {
   u32 client_index;
   u32 context;
@@ -72,3 +63,18 @@ autoreply define flowrouter_session_add
   u32 next_index;
 };
 
+define flowrouter_session_add_reply
+{
+  u32 context;
+  i32 retval;
+  u64 session_index;
+};
+
+autoreply define flowrouter_mapper_add {
+  u32 client_index;
+  u32 context;
+  u32 fib_index;
+  vl_api_ip4_address_t src;
+  vl_api_ip4_address_t mapper;      /* IP address of mapper for this pool (IPv4 only) */
+  u16 udp_port;                 /* UDP port mapper is listening on */
+};

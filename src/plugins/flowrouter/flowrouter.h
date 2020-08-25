@@ -24,7 +24,7 @@
 typedef vl_api_flowrouter_instructions_t flowrouter_instructions_t;
 typedef vl_api_flowrouter_arc_t flowrouter_arc_t;
 typedef vl_api_flowrouter_cache_miss_behaviour_t flowrouter_cache_miss_behaviour_t;
-typedef vl_api_flowrouter_params_t flowrouter_params_t;
+typedef vl_api_flowrouter_dpo_t flowrouter_dpo_t;
 
 #define FLOWROUTER_DEFAULT_MAX_SESSIONS	1 << 20 /* Default 1M sessions */
 
@@ -40,6 +40,7 @@ typedef enum
   FLOWROUTER_NEXT_ICMP_ERROR,
   FLOWROUTER_NEXT_FASTPATH,
   FLOWROUTER_NEXT_SLOWPATH,
+  FLOWROUTER_NEXT_IP4_LOOKUP,
   FLOWROUTER_N_NEXT
 } flowrouter_next_t;
 
@@ -60,7 +61,7 @@ typedef struct {
     struct {
       ip4_address_t sa;
       ip4_address_t da;
-      u32 proto:8, fib_index:24;
+      u32 proto:8, thread_index:6, fib_index:18;
       u16 sp;
       u16 dp;
     };
@@ -68,6 +69,10 @@ typedef struct {
   };
 } __clib_packed flowrouter_key_t;
 STATIC_ASSERT_SIZEOF (flowrouter_key_t, 16);
+
+typedef enum {
+  FLOWROUTER_SESSION_FLAG_INCOMPLETE = 1 << 0,
+} flowrouter_session_flags_t;
 
 /* Session cache entries */
 typedef struct {
@@ -95,13 +100,14 @@ typedef struct {
   u32 lru_head_index;
   u32 lru_index;
   f64 last_lru_update;
+
+  u32 buffer;
+  flowrouter_session_flags_t flags;
 } flowrouter_session_t;
 
 typedef enum
 {
- FLOWROUTER_COUNTER_HANDOFF_SLOWPATH = 0,
- FLOWROUTER_COUNTER_HANDOFF_FP,
- FLOWROUTER_COUNTER_HANDOFF_DIFFERENT_WORKER_FP,
+ FLOWROUTER_COUNTER_FASTPATH_CACHE_MISS = 0,
  FLOWROUTER_COUNTER_FASTPATH_FORWARDED,
  FLOWROUTER_COUNTER_SLOWPATH_FREED_ALREADY,
  FLOWROUTER_COUNTER_SLOWPATH_DELETED,
@@ -112,14 +118,12 @@ typedef enum
 } flowrouter_counter_type_t;
 
 #define foreach_flowrouter_counter_name					\
-  _(HANDOFF_SLOWPATH, slowpath, flowrouter/handoff)				\
-  _(HANDOFF_FP, fastpath, flowrouter/handoff)		\
-  _(HANDOFF_DIFFERENT_WORKER_FP, different_worker_fp, flowrouter/handoff)     \
-  _(FASTPATH_FORWARDED, forwarded, flowrouter/fastpath)			\
+  _(FASTPATH_CACHE_MISS, cache_miss, flowrouter/fastpath)			\
+  _(FASTPATH_FORWARDED, forwarded, flowrouter/fastpath)				\
   _(SLOWPATH_FREED_ALREADY, freedalready, flowrouter/slowpath)		\
-  _(SLOWPATH_DELETED, deleted, flowrouter/slowpath)                           \
-  _(SLOWPATH_PORT_ALLOC_CONFLICT, portallocconflict, flowrouter/slowpath)     \
-  _(SLOWPATH_CREATED, created, flowrouter/slowpath)                           \
+  _(SLOWPATH_DELETED, deleted, flowrouter/slowpath)			\
+  _(SLOWPATH_PORT_ALLOC_CONFLICT, portallocconflict, flowrouter/slowpath) \
+  _(SLOWPATH_CREATED, created, flowrouter/slowpath)			\
   _(SLOWPATH_EXPIRE_VECTOR_MAX, expire_vector_max, flowrouter/slowpath)
 
 #define foreach_flowrouter_timers			\
@@ -171,6 +175,12 @@ typedef struct {
   /* Configuration store indicies */
   //  u32 interfaces_index;
   //u32 parameters_index;
+
+  /* Protocol globals */
+  vlib_packet_template_t protocol_template;
+  ip4_address_t src;
+  ip4_address_t mapper;
+  u16 udp_port;
 
   u16 msg_id_base;
 

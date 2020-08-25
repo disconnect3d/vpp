@@ -77,7 +77,7 @@ VLIB_NODE_FN (flowrouter_handoff_node) (vlib_main_t * vm,
 
   u32 *bi;
   u32 thread_index = vm->thread_index;
-  u32 no_fastpath = 0, no_slowpath = 0, no_to_buffers = 0;
+  u32 no_fastpath = 0, no_cachemiss = 0, no_to_buffers = 0;
   ip4_header_t *ip0;
   clib_bihash_kv_16_8_t kv;
 
@@ -88,7 +88,7 @@ VLIB_NODE_FN (flowrouter_handoff_node) (vlib_main_t * vm,
   u32 fast_path_node_index = FLOWROUTER_NEXT_FASTPATH;
 
   while (n_left_from > 0) {
-      u32 sw_if_index0 = vnet_buffer (b[0])->sw_if_index[VLIB_RX];
+    u32 sw_if_index0 = vnet_buffer (b[0])->sw_if_index[VLIB_RX];
     u32 fib_index0 = ip4_fib_table_get_index_for_sw_if_index (sw_if_index0);
     u16 sport0 = vnet_buffer (b[0])->ip.reass.l4_src_port;
     u16 dport0 = vnet_buffer (b[0])->ip.reass.l4_dst_port;
@@ -147,6 +147,7 @@ VLIB_NODE_FN (flowrouter_handoff_node) (vlib_main_t * vm,
       tb += 1;
       next += 1;
       no_to_buffers++;
+      no_cachemiss++;
     } else {
       u32 to_thread = kv.value >> 32;
       if (to_thread == thread_index) {
@@ -205,7 +206,7 @@ VLIB_NODE_FN (flowrouter_handoff_node) (vlib_main_t * vm,
   }
 
   vlib_increment_simple_counter (fm->counters + FLOWROUTER_COUNTER_HANDOFF_FP, thread_index, 0, no_fastpath);
-  vlib_increment_simple_counter (fm->counters + FLOWROUTER_COUNTER_HANDOFF_SLOWPATH, thread_index, 0, no_slowpath);
+  vlib_increment_simple_counter (fm->counters + FLOWROUTER_COUNTER_HANDOFF_CACHE_MISS, thread_index, 0, no_cachemiss);
 
   vlib_buffer_enqueue_to_next (vm, node, to_buffers, nexts, no_to_buffers);
 

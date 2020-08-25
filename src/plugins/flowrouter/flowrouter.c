@@ -21,14 +21,17 @@
 #include <vnet/ip/ip4_packet.h>
 #include <vnet/ip/reass/ip4_sv_reass.h>
 #include "flowrouter.h"
+#include "flowrouter_protocol.h"
 #include "flowrouter_inlines.h"
 #include <vnet/ip/format.h>
 #include <arpa/inet.h>
 #include <vnet/ip/ip4.h>
 #include <math.h>
 #include <vnet/fib/fib_table.h>
+#include <vnet/udp/udp.h>
 
 flowrouter_main_t flowrouter_main;
+extern vlib_node_registration_t flowrouter_protocol_input_node;
 
 #if 0
 
@@ -185,6 +188,9 @@ format_flowrouter_fp_session (u8 * s, va_list * args)
   flowrouter_session_t *ses = va_arg (*args, flowrouter_session_t *);
 
   s = format (s, "Flow: %U", format_flowrouter_key, &ses->k);
+  if (ses->flags & FLOWROUTER_SESSION_FLAG_INCOMPLETE) {
+    s = format (s, "Flags: incomplete (cached buffer: %u)\n", ses->buffer);
+  }
   if (ses->instructions & (FLOWROUTER_INSTR_SOURCE_ADDRESS|FLOWROUTER_INSTR_SOURCE_PORT)) {
     s = format (s, "\n         Rewrite source: ->%U:%u",
 		format_ip4_address, &ses->post_sa, ntohs(ses->post_sp));
@@ -300,9 +306,6 @@ flowrouter_enable (void)
 
   flowrouter_reset_tables ();
 
-  /*
-   * Register fast path handover
-   */
   clib_spinlock_init(&fm->counter_lock);
   clib_spinlock_lock (&fm->counter_lock); /* should be no need */
 
@@ -335,7 +338,8 @@ flowrouter_interface_by_sw_if_index (u32 sw_if_index)
 }
 
 void
-flowrouter_api_enable (flowrouter_arc_t arc, u32 sw_if_index, flowrouter_params_t *params)
+flowrouter_api_enable (flowrouter_arc_t arc, u32 sw_if_index, flowrouter_dpo_t *dpo,
+			    flowrouter_cache_miss_behaviour_t cache_miss)
 {
   flowrouter_main_t *um = &flowrouter_main;
   flowrouter_interface_t *interface = flowrouter_interface_by_sw_if_index(sw_if_index);
@@ -349,14 +353,7 @@ flowrouter_api_enable (flowrouter_arc_t arc, u32 sw_if_index, flowrouter_params_
   vec_validate_init_empty(um->interface_by_sw_if_index, sw_if_index, ~0);
   um->interface_by_sw_if_index[sw_if_index] = interface - um->interfaces;
 
-  switch (params->cache_miss) {
-  case FLOWROUTER_CACHE_MISS_FORWARD:
-  case FLOWROUTER_CACHE_MISS_DROP:
-  case FLOWROUTER_CACHE_MISS_PUNT:
-  default:
-    assert(0);
-  }
-  interface->cache_miss = params->cache_miss;
+  interface->cache_miss = cache_miss;
   //punt_node;
   //punt_port;
 
@@ -382,9 +379,40 @@ flowrouter_api_enable (flowrouter_arc_t arc, u32 sw_if_index, flowrouter_params_
   interface->arc = arc;
 
   /* Validate and try to enable */
-  if (vnet_feature_enable_disable (arcname, "flowrouter-handoff",
+  if (vnet_feature_enable_disable (arcname, "flowrouter-fastpath",
 				   sw_if_index, 1, 0, 0) != 0)
     clib_warning("VNET feature enable failed on %u", interface->sw_if_index);
+
+}
+
+static void
+flowrouter_protocol_template_init (vlib_packet_template_t *protocol_template)
+{
+  vlib_main_t *vm = vlib_get_main();
+
+  flowrouter_ip_udp_flowrouter_header_t h;
+  clib_memset(&h, 0, sizeof(h));
+  h.ip.ip_version_and_header_length = 0x45;
+  h.ip.flags_and_fragment_offset = clib_host_to_net_u16 (IP4_HEADER_FLAG_DONT_FRAGMENT);
+  h.ip.ttl = 64;
+  h.ip.protocol = IP_PROTOCOL_UDP;
+
+  vlib_packet_template_init (vm, protocol_template, &h, sizeof(h), /* alloc chunk size */ 8,
+                             "flowrouter protocol");
+}
+
+void
+flowrouter_mapper_add (u32 fib_index, ip4_address_t src, ip4_address_t mapper, u16 udp_port)
+{
+  vlib_main_t * vm = vlib_get_main();
+  flowrouter_main_t *fm = &flowrouter_main;
+
+  fm->src = src;
+  fm->mapper = mapper;
+  fm->udp_port = udp_port;
+  flowrouter_protocol_template_init(&fm->protocol_template);
+
+  udp_register_dst_port (vm, udp_port, flowrouter_protocol_input_node.index, 1 /*is_ip4 */);
 
 }
 
@@ -392,7 +420,7 @@ int
 flowrouter_session_add (u32 thread_index, flowrouter_instructions_t instructions,
 			flowrouter_key_t *key, ip4_address_t post_sa,
 			ip4_address_t post_da, u16 post_sp, u16 post_dp, u16 tcp_mss, u32 fib_index,
-			u32 next_index)
+			u32 next_index, u64 *session_index)
 {
   flowrouter_main_t *fm = &flowrouter_main;
   flowrouter_session_t *s;
@@ -432,6 +460,7 @@ flowrouter_session_add (u32 thread_index, flowrouter_instructions_t instructions
 
   u32 pool_index = s - fm->sessions_per_worker[thread_index];
   bkey.value = ((u64)thread_index << 32) | pool_index;
+  *session_index = bkey.value;
 
   if (clib_bihash_add_del_16_8 (&fm->flowhash, &bkey, 1)) {
     clib_warning("Bihash add failed");
@@ -440,6 +469,67 @@ flowrouter_session_add (u32 thread_index, flowrouter_instructions_t instructions
   }
   return 0;
 }
+
+/*
+ * DPO
+ */
+#include <vnet/ip/ip.h>
+#include <nat/nat_dpo.h>
+
+dpo_type_t nat_dpo_type;
+
+void
+nat_dpo_create (dpo_proto_t dproto, u32 aftr_index, dpo_id_t * dpo)
+{
+  dpo_set (dpo, nat_dpo_type, dproto, aftr_index);
+}
+
+u8 *
+format_nat_dpo (u8 * s, va_list * args)
+{
+  index_t index = va_arg (*args, index_t);
+  CLIB_UNUSED (u32 indent) = va_arg (*args, u32);
+
+  return (format (s, "NAT44 out2in: AFTR:%d", index));
+}
+
+static void
+nat_dpo_lock (dpo_id_t * dpo)
+{
+}
+
+static void
+nat_dpo_unlock (dpo_id_t * dpo)
+{
+}
+
+const static dpo_vft_t nat_dpo_vft = {
+  .dv_lock = nat_dpo_lock,
+  .dv_unlock = nat_dpo_unlock,
+  .dv_format = format_nat_dpo,
+};
+
+const static char *const nat_ip4_nodes[] = {
+  "nat44-out2in",
+  NULL,
+};
+
+const static char *const nat_ip6_nodes[] = {
+  NULL,
+};
+
+const static char *const *const nat_nodes[DPO_PROTO_NUM] = {
+  [DPO_PROTO_IP4] = nat_ip4_nodes,
+  [DPO_PROTO_IP6] = nat_ip6_nodes,
+  [DPO_PROTO_MPLS] = NULL,
+};
+
+void
+nat_dpo_module_init (void)
+{
+  nat_dpo_type = dpo_register_new_type (&nat_dpo_vft, nat_nodes);
+}
+
 
 clib_error_t *flowrouter_plugin_api_hookup (vlib_main_t * vm);
 clib_error_t *

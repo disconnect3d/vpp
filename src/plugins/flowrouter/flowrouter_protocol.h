@@ -16,6 +16,8 @@
 #ifndef included_flowrouter_protocol_h
 #define included_flowrouter_protocol_h
 
+#include <vnet/udp/udp_packet.h>
+
 /*
  * Worker - Mapper protocol.
  *
@@ -35,12 +37,6 @@
  *
  */
 
-/* Defined in flowrouter_worker.api */
-#define vl_typedefs
-#include <flowrouter/worker/flowrouter_worker_all_api_h.h>
-#undef vl_typedefs
-typedef vl_api_flowrouter_instructions_t flowrouter_instructions_t;
-
 #define FLOWROUTER_PROTOCOL_MAX_SIZE		1400
 
 /*
@@ -49,6 +45,12 @@ typedef vl_api_flowrouter_instructions_t flowrouter_instructions_t;
 typedef struct {
   u32 core_id;
 } __attribute__((packed)) flowrouter_header_t;
+
+typedef struct {
+  ip4_header_t ip;
+  udp_header_t udp;
+  flowrouter_header_t fr;
+}  __attribute__((packed))flowrouter_ip_udp_flowrouter_header_t;
 
 /*
  * TLV Types
@@ -68,7 +70,6 @@ typedef struct {
   u32 vni;
   u16 sp;
   u16 dp;
-  bool in2out;
 } __attribute__((packed)) flowrouter_session_descriptor_t;
 
 /*
@@ -78,7 +79,6 @@ typedef struct {
   u8 type;		/* Session request */
   u8 length;
   u32 session_id;
-  u32 pool_id;
   flowrouter_session_descriptor_t desc;
   u8 opaque_data[0];
 } __attribute__((packed)) flowrouter_option_session_request_t;

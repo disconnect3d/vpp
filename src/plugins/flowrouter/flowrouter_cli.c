@@ -154,6 +154,11 @@ show_flowrouter_summary_command_fn (vlib_main_t * vm, unformat_input_t * input,
 				     interface->arc, interface->cache_miss);
 		   }));
       /* *INDENT-ON* */
+      vlib_cli_output (vm, "Mapper:");
+      vlib_cli_output (vm, "  source: %U", format_ip4_address, &fm->src);
+      vlib_cli_output (vm, "  mapper: %U", format_ip4_address, &fm->mapper);
+      vlib_cli_output (vm, "  port:   %u", fm->udp_port);
+
       vlib_cli_output (vm, "Timouts:");
       vlib_cli_output (vm, "  default: %u ICMP: %u UDP: %u", fm->default_timeout, fm->icmp_timeout,
 		       fm->udp_timeout);

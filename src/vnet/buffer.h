@@ -379,11 +379,6 @@ typedef struct
     {
       u32 flags;
     } snat;
-    /* Flow router */
-    struct
-    {
-      u32 pool_index;
-    } flowrouter;
 
     u32 unused[6];
   };
