@@ -1,0 +1,74 @@
+import "vnet/interface_types.api";
+import "vnet/ip/ip_types.api";
+
+enum flowrouter_instructions {
+  FLOWROUTER_INSTR_NO_TRANSLATE           = 0x1,
+  FLOWROUTER_INSTR_SOURCE_ADDRESS         = 0x2,
+  FLOWROUTER_INSTR_SOURCE_PORT            = 0x4,
+  FLOWROUTER_INSTR_DESTINATION_ADDRESS    = 0x8,
+  FLOWROUTER_INSTR_DESTINATION_PORT       = 0x10,
+  FLOWROUTER_INSTR_TCP_CONN_TRACK         = 0x20,
+  FLOWROUTER_INSTR_TCP_MSS                = 0x40,
+};
+
+enum flowrouter_arc {
+  FLOWROUTER_ARC_IP4_RX,
+  FLOWROUTER_ARC_IP4_TX,
+  FLOWROUTER_ARC_IP4_DPO,
+};
+
+enum flowrouter_cache_miss_behaviour {
+  FLOWROUTER_CACHE_MISS_FORWARD,
+  FLOWROUTER_CACHE_MISS_DROP,
+  FLOWROUTER_CACHE_MISS_PUNT,
+};
+
+typedef flowrouter_params {
+  vl_api_flowrouter_cache_miss_behaviour_t cache_miss;
+  vl_api_ip4_address_t punt_node;
+  u16 punt_port;
+};
+
+autoreply define flowrouter_enable
+{
+  u32 client_index;
+  u32 context;
+  vl_api_flowrouter_arc_t arc;
+  vl_api_interface_index_t sw_if_index;
+  vl_api_flowrouter_params_t params;
+};
+
+autoreply define flowrouter_enable_dpo
+{
+  u32 client_index;
+  u32 context;
+  u32 fib_index;
+  vl_api_ip4_prefix_t prefix;
+  vl_api_flowrouter_params_t params;
+};
+
+typedef flowrouter_key {
+  vl_api_ip4_address_t sa;
+  vl_api_ip4_address_t da;
+  u8 proto;
+  u32 fib_index;
+  u16 sp;
+  u16 dp;
+};
+
+autoreply define flowrouter_session_add
+{
+  u32 client_index;
+  u32 context;
+  u32 threadid;
+  vl_api_flowrouter_instructions_t instructions;
+  vl_api_flowrouter_key_t key;
+  vl_api_ip4_address_t post_sa;
+  vl_api_ip4_address_t post_da;
+  u16 post_sp;
+  u16 post_dp;
+  u16 tcp_mss;
+  u32 fib_index;
+  u32 next_index;
+};
+
